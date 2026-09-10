@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: design-procurement-agent
+    runtime: node
+    plan: 0.5c-512mb
+    region: oregon
+    branch: main
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /readyz
+    autoDeployTrigger: checksPass
+    maxShutdownDelaySeconds: 120
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: design-procurement-agent-db
+          property: connectionString
+      - key: ADMIN_API_KEY
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
+databases:
+  - name: design-procurement-agent-db
+    plan: 0.1c-256mb
+    region: oregon
+    databaseName: design_procurement_agent
+    user: agent
+    ipAllowList: []
