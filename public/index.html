@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FORM sandbox</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="gate" class="gate" hidden>
+    <form id="login">
+      <p class="eyebrow">Kitchen renovation</p>
+      <h1>FORM</h1>
+      <p class="lede">Enter the service <code>ADMIN_API_KEY</code> to use this sandbox. No real texts are sent.</p>
+      <label class="sr-only" for="token">Admin API key</label>
+      <input id="token" type="password" autocomplete="off" required>
+      <button type="submit" id="login-send">Open sandbox</button>
+      <p id="login-error" class="login-error" hidden></p>
+    </form>
+  </div>
+  <div class="shell" hidden>
+    <header class="mast">
+      <div>
+        <p class="eyebrow">Kitchen renovation</p>
+        <h1>FORM</h1>
+        <p class="lede">Sandbox. No real texts are sent.</p>
+      </div>
+    </header>
+
+    <details class="admin" id="admin">
+      <summary>Admin</summary>
+      <div class="admin-bar">
+        <button type="button" id="clear-chat">Clear chat</button>
+        <button type="button" id="pause">Pause</button>
+        <button type="button" id="new-chat">New chat</button>
+        <button type="button" id="sign-out" hidden>Sign out</button>
+      </div>
+      <form id="operator" class="operator">
+        <label class="sr-only" for="operator-text">Operator message</label>
+        <input id="operator-text" type="text" maxlength="3000" placeholder="Operator message…">
+        <button type="submit" id="operator-send">Send</button>
+      </form>
+      <div id="admin-status" class="admin-status"></div>
+    </details>
+
+    <div class="roles" role="radiogroup" aria-label="Send as">
+      <button type="button" class="role" data-sender="homeowner" aria-checked="true">Homeowner</button>
+      <button type="button" class="role" data-sender="contractor" aria-checked="false">Contractor</button>
+    </div>
+
+    <main id="log" class="log" aria-live="polite">
+      <p class="empty" id="empty">Share the property address and photos of the current kitchen. Floor plans and inspiration photos help. FORM will generate a redesigned kitchen from what you send.</p>
+    </main>
+
+    <div class="dock">
+      <div id="drafts" class="drafts" hidden></div>
+      <form id="composer" class="composer">
+        <input id="files" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden>
+        <button type="button" id="attach" aria-label="Add photos">Photo</button>
+        <label class="sr-only" for="input">Message</label>
+        <textarea id="input" rows="1" placeholder="Message as homeowner…" maxlength="16000"></textarea>
+        <button type="submit" id="send">Send</button>
+      </form>
+    </div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

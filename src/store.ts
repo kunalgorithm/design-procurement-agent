@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { transaction } from './db.js';
-import { emptyBrief, isStopRequest, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext } from './domain.js';
+import { emptyBrief, isStopRequest, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext, type Attachment } from './domain.js';
 
 export interface Turn {
   id: string; conversation_id: string; kind: 'agent' | 'operator';
@@ -84,6 +84,21 @@ export class Store {
   async listTurns(status?: string) {
     return (await this.pool.query<Turn>('SELECT * FROM turns WHERE ($1::text IS NULL OR status=$1) ORDER BY queue_order DESC LIMIT 100', [status ?? null])).rows;
   }
+  async listConversationTurns(id: string, status?: string) {
+    return (await this.pool.query<Turn>('SELECT * FROM turns WHERE conversation_id=$1 AND ($2::text IS NULL OR status=$2) ORDER BY queue_order DESC LIMIT 20', [id, status ?? null])).rows;
+  }
+  async clearConversation(id: string, channel: 'linq' | 'sandbox' = 'sandbox') {
+    return transaction(this.pool, async (client) => {
+      const conversation = (await client.query<Conversation>('SELECT * FROM conversations WHERE id=$1 AND channel=$2 FOR UPDATE', [id, channel])).rows[0];
+      if (!conversation) return null;
+      await client.query('DELETE FROM webhook_events WHERE id IN (SELECT external_id FROM messages WHERE conversation_id=$1 AND external_id IS NOT NULL)', [id]);
+      await client.query('DELETE FROM handoffs WHERE conversation_id=$1', [id]);
+      await client.query('DELETE FROM turns WHERE conversation_id=$1', [id]);
+      await client.query('DELETE FROM messages WHERE conversation_id=$1', [id]);
+      return (await client.query<Conversation>('UPDATE conversations SET brief=$2,paused=false,updated_at=now() WHERE id=$1 RETURNING *',
+        [id, JSON.stringify(emptyBrief())])).rows[0];
+    });
+  }
   async retryTurn(id: string) {
     // Retain decision and Linq idempotency key across retries.
     return (await this.pool.query<Turn>(`UPDATE turns SET status='processing',lease_until=now()-interval '1 second',
@@ -107,7 +122,7 @@ export class Store {
       try {
         locked = (await client.query<{ locked: boolean }>('SELECT pg_try_advisory_lock(hashtextextended($1,0)) AS locked', [candidate.conversation_id])).rows[0]!.locked;
         if (!locked) { client.release(); continue; }
-        const claimed = await client.query<Turn>(`UPDATE turns SET status='processing',attempts=attempts+1,lease_until=now()+interval '2 minutes'
+        const claimed = await client.query<Turn>(`UPDATE turns SET status='processing',attempts=attempts+1,lease_until=now()+interval '4 minutes'
           WHERE id=$1 AND (status='pending' OR (status='processing' AND lease_until<now())) RETURNING *`, [candidate.id]);
         if (claimed.rows[0]) return { turn: claimed.rows[0], client };
         await client.query('SELECT pg_advisory_unlock(hashtextextended($1,0))', [candidate.conversation_id]);
@@ -125,7 +140,7 @@ export class Store {
   async saveDecision(id: string, decision: Decision) {
     await this.pool.query("UPDATE turns SET decision=$2 WHERE id=$1 AND status='processing'", [id, JSON.stringify(decision)]);
   }
-  async finish(turn: Turn, decision: Decision, externalId: string | null) {
+  async finish(turn: Turn, decision: Decision, externalId: string | null, attachments: Attachment[] = []) {
     await transaction(this.pool, async (client) => {
       // Match ingest/pause lock order so STOP cannot deadlock against completion.
       await client.query('SELECT id FROM conversations WHERE id=$1 FOR UPDATE', [turn.conversation_id]);
@@ -133,20 +148,24 @@ export class Store {
       if (current.status === 'done') return;
       if (current.status === 'cancelled') {
         // A pause cannot recall a send already accepted by Linq. Keep its audit trail.
-        if (externalId && decision.reply) await client.query(`INSERT INTO messages(id,conversation_id,external_id,role,sender,text)
-          VALUES($1,$2,$3,'assistant','FORM',$4) ON CONFLICT(id) DO NOTHING`,
-        [turn.id, turn.conversation_id, `outbound:${externalId}`, decision.reply]);
+        if (externalId && decision.reply) await client.query(`INSERT INTO messages(id,conversation_id,external_id,role,sender,text,attachments)
+          VALUES($1,$2,$3,'assistant','FORM',$4,$5) ON CONFLICT(id) DO NOTHING`,
+        [turn.id, turn.conversation_id, `outbound:${externalId}`, decision.reply, JSON.stringify(attachments)]);
         return;
       }
       if (turn.kind === 'agent') {
         await client.query('UPDATE conversations SET brief=$2,updated_at=now() WHERE id=$1', [turn.conversation_id, JSON.stringify(decision.brief)]);
       }
-      if (decision.reply) await client.query(`INSERT INTO messages(id,conversation_id,external_id,role,sender,text)
-        VALUES($1,$2,$3,$4,'FORM',$5) ON CONFLICT(id) DO NOTHING`,
-      [turn.id, turn.conversation_id, externalId ? `outbound:${externalId}` : null, turn.kind === 'operator' ? 'operator' : 'assistant', decision.reply]);
+      if (decision.reply || attachments.length) await client.query(`INSERT INTO messages(id,conversation_id,external_id,role,sender,text,attachments)
+        VALUES($1,$2,$3,$4,'FORM',$5,$6) ON CONFLICT(id) DO NOTHING`,
+      [turn.id, turn.conversation_id, externalId ? `outbound:${externalId}` : null, turn.kind === 'operator' ? 'operator' : 'assistant', decision.reply ?? '', JSON.stringify(attachments)]);
       if (decision.handoff) {
         await client.query(`INSERT INTO handoffs(conversation_id,turn_id,kind,summary) VALUES($1,$2,$3,$4)
           ON CONFLICT DO NOTHING`, [turn.conversation_id, turn.id, decision.handoff.kind, decision.handoff.summary]);
+        if (decision.handoff.kind === 'design' && attachments.length) {
+          await client.query(`UPDATE handoffs SET status='completed',completed_at=now()
+            WHERE conversation_id=$1 AND turn_id=$2 AND kind='design' AND status='open'`, [turn.conversation_id, turn.id]);
+        }
         if (decision.handoff.kind === 'human') {
           await client.query('UPDATE conversations SET paused=true WHERE id=$1', [turn.conversation_id]);
           await client.query("UPDATE turns SET status='cancelled',completed_at=now() WHERE conversation_id=$1 AND kind='agent' AND status='pending'", [turn.conversation_id]);

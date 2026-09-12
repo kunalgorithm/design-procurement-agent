@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
-import type { Agent, Messenger } from './domain.js';
+import type { Agent, Attachment, Decision, Messenger } from './domain.js';
 import { validateDecision } from './domain.js';
+import { shouldGenerateKitchen, type DesignStudio } from './design.js';
 import { Store } from './store.js';
 
 export function classifyError(error: unknown) {
@@ -17,7 +18,8 @@ export class Worker {
   private active?: Promise<void>;
   constructor(private readonly store: Store, private readonly agent: Agent,
     private readonly messenger: Messenger, private readonly logger: Logger,
-    private readonly pollMs: number, private readonly mode: 'sandbox' | 'live') {}
+    private readonly pollMs: number, private readonly mode: 'sandbox' | 'live',
+    private readonly design?: DesignStudio) {}
 
   async tick(): Promise<boolean> {
     const claim = await this.store.claim();
@@ -35,13 +37,21 @@ export class Worker {
       if (turn.kind === 'agent' && ((await this.store.getConversation(turn.conversation_id))?.paused || (await this.store.getTurn(turn.id))?.status === 'cancelled')) {
         await this.store.cancel(turn); return true;
       }
-      let externalId: string | null = null;
-      if (decision.reply && context.conversation.channel === 'linq') {
-        if (this.mode !== 'live') throw Object.assign(new Error('LIVE_SEND_DISABLED'), { status: 403 });
-        externalId = await this.messenger.send(context.conversation.external_id, decision.reply, turn.id);
+      let output: Decision = decision;
+      let attachments: Attachment[] = [];
+      if (turn.kind === 'agent' && this.design && shouldGenerateKitchen(output)) {
+        attachments = await this.design.generate(context, output);
+        if (!output.reply && attachments.length) {
+          output = { ...output, reply: "Here's a proposed kitchen redesign based on the photos and notes you shared." };
+        }
       }
-      await this.store.finish(turn, decision, externalId);
-      this.logger.info({ turnId: turn.id, conversationId: turn.conversation_id, handoff: decision.handoff?.kind }, 'Turn completed');
+      let externalId: string | null = null;
+      if (output.reply && context.conversation.channel === 'linq') {
+        if (this.mode !== 'live') throw Object.assign(new Error('LIVE_SEND_DISABLED'), { status: 403 });
+        externalId = await this.messenger.send(context.conversation.external_id, output.reply, turn.id);
+      }
+      await this.store.finish(turn, output, externalId, attachments);
+      this.logger.info({ turnId: turn.id, conversationId: turn.conversation_id, handoff: output.handoff?.kind, images: attachments.length }, 'Turn completed');
     } catch (error) {
       const failure = classifyError(error);
       await this.store.fail(turn, failure.code, failure.permanent);

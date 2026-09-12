@@ -9,7 +9,9 @@ import { Store } from '../../src/store.js';
 import { Worker } from '../../src/worker.js';
 import { createApp } from '../../src/app.js';
 import { readConfig } from '../../src/config.js';
-import { type Agent, type AgentContext, type Messenger } from '../../src/domain.js';
+import { type Agent, type AgentContext, type Attachment, type Messenger } from '../../src/domain.js';
+import { type DesignStudio } from '../../src/design.js';
+import { writeSandboxMedia } from '../../src/media.js';
 import { incoming, decision, event, sign, webhookSecret } from '../fixtures.js';
 
 if (!process.env.TEST_DATABASE_URL) throw new Error('Set TEST_DATABASE_URL to a dedicated PostgreSQL test database');
@@ -25,7 +27,7 @@ const auth = { Authorization: `Bearer ${config.ADMIN_API_KEY}` };
 const sent: { chatId: string; text: string; key: string }[] = [];
 const messenger: Messenger = { async send(chatId, text, key) { sent.push({ chatId, text, key }); return `provider-${key}`; } };
 const agent: Agent = { async respond() { return decision(); } };
-const worker = (model = agent, transport = messenger) => new Worker(store, model, transport, logger, 100, 'live');
+const worker = (model = agent, transport = messenger, design?: DesignStudio) => new Worker(store, model, transport, logger, 100, 'live', design);
 const readyAgain = (id: string) => pool.query("UPDATE turns SET lease_until=now()-interval '1 second',available_at=now() WHERE id=$1", [id]);
 
 before(async () => { await admin.query(`CREATE SCHEMA ${schema}`); await migrate(pool); });
@@ -190,11 +192,28 @@ test('human escalation creates an actionable task and pauses automation', async 
 test('design handoffs persist the approved brief and can be completed through the API', async () => {
   await store.ingest(incoming(), 'linq');
   const output = decision({ handoff: { kind: 'design', summary: 'Approved cabinet replacement brief.' } });
-  Object.assign(output.brief, { contractorName: 'Sam', homeownerName: 'Alex', propertyAddress: '123 Example Street', scope: 'Replace cabinets' });
+  Object.assign(output.brief, { propertyAddress: '123 Example Street' });
   await worker({ async respond() { return output; } }).tick();
   const listed = await request(app).get('/api/handoffs').set(auth).expect(200);
   assert.equal(listed.body.handoffs[0].kind, 'design');
   await request(app).patch(`/api/handoffs/${listed.body.handoffs[0].id}`).set(auth).send({ status: 'completed' }).expect(200);
+});
+
+test('a generated kitchen image is stored on the assistant message', async () => {
+  const photoId = randomUUID();
+  await writeSandboxMedia(photoId, Buffer.from([0xff, 0xd8, 0xff, 0xd9]), { mimeType: 'image/jpeg', filename: 'kitchen.jpg' });
+  const queued = await store.ingest(incoming({
+    text: 'Please redesign 123 Example Street.',
+    attachments: [{ id: photoId, url: `/api/media/${photoId}`, mimeType: 'image/jpeg', filename: 'kitchen.jpg', sizeBytes: 4 }],
+  }), 'sandbox');
+  const render: Attachment = { id: randomUUID(), url: `/api/media/${randomUUID()}`, mimeType: 'image/jpeg', filename: 'kitchen-redesign.jpg', sizeBytes: 12 };
+  const output = decision({ reply: 'Here is a redesign.', handoff: { kind: 'design', summary: 'First kitchen.' } });
+  Object.assign(output.brief, { propertyAddress: '123 Example Street' });
+  await worker({ async respond() { return output; } }, messenger, { async generate() { return [render]; } }).tick();
+  const history = await store.context(queued.conversationId!);
+  const assistant = history?.messages.find((message) => message.role === 'assistant');
+  assert.deepEqual(assistant?.attachments, [render]);
+  assert.equal((await store.listHandoffs()).length, 0);
 });
 
 test('a quiet decision updates the brief without sending a text', async () => {

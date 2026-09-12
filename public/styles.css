@@ -1,0 +1,397 @@
+:root {
+  --paper: #f3efe6;
+  --ink: #1f1c16;
+  --muted: #6d665a;
+  --line: #d8d0c2;
+  --card: #fffdf8;
+  --form: #2b2720;
+  --homeowner: #2f4a6e;
+  --contractor: #355644;
+  --warn: #8a3b1d;
+  --shadow: 0 10px 30px rgba(31, 28, 22, 0.06);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  font: 16px/1.45 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top, #faf7f0, var(--paper) 42%),
+    var(--paper);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.gate, .shell[hidden], .gate[hidden] { display: none; }
+.gate:not([hidden]) {
+  display: block;
+  max-width: 24rem;
+  margin: 12vh auto 0;
+  padding: 0 1rem;
+}
+.gate form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+}
+.gate input, #token {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+.login-error { margin: 0; color: var(--warn); }
+.shell:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  max-width: 42rem;
+  height: 100dvh;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 0;
+  overflow: hidden;
+}
+
+.mast {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-shrink: 0;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.eyebrow {
+  margin: 0 0 0.2rem;
+  font: 600 0.72rem/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.8rem;
+  letter-spacing: -0.03em;
+}
+
+.lede {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+#new-chat, #clear-chat, #pause, #sign-out, #send, #operator-send, #login-send, .retry, .role, #attach {
+  font: 600 0.88rem/1.1 ui-sans-serif, system-ui, sans-serif;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+#new-chat, #send, #operator-send, #login-send, .retry {
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--card);
+  padding: 0.65rem 0.95rem;
+}
+
+#clear-chat, #pause, #sign-out {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  padding: 0.55rem 0.85rem;
+}
+
+#new-chat:hover, #clear-chat:hover, #pause:hover, #sign-out:hover, #send:hover, #operator-send:hover, #login-send:hover, .retry:hover, #attach:hover { opacity: 0.88; }
+#new-chat:disabled, #clear-chat:disabled, #pause:disabled, #sign-out:disabled, #send:disabled, #operator-send:disabled, #login-send:disabled, .retry:disabled, #attach:disabled { opacity: 0.45; cursor: wait; }
+.retry { margin-top: 0.65rem; }
+#attach {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  padding: 0.65rem 0.85rem;
+}
+
+.admin {
+  flex-shrink: 0;
+  margin: 0.85rem 0 0;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.admin summary {
+  font: 600 0.72rem/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.admin-bar, .operator {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+}
+
+.operator input {
+  flex: 1;
+  min-width: 10rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+
+.admin-status {
+  margin-top: 0.7rem;
+  color: var(--muted);
+  font: 0.88rem/1.4 ui-sans-serif, system-ui, sans-serif;
+}
+
+.admin-status:empty { display: none; }
+.admin-status p { margin: 0 0 0.45rem; }
+.admin-status button {
+  margin-left: 0.4rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font: 600 0.72rem/1.1 ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.roles {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.75rem 0;
+}
+
+.role {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  padding: 0.5rem 0.85rem;
+}
+
+.role[aria-checked="true"][data-sender="homeowner"] {
+  background: var(--homeowner);
+  border-color: var(--homeowner);
+  color: white;
+}
+
+.role[aria-checked="true"][data-sender="contractor"] {
+  background: var(--contractor);
+  border-color: var(--contractor);
+  color: white;
+}
+
+.log {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  overflow: auto;
+  padding: 0.4rem 0 1rem;
+}
+
+.empty {
+  margin: 2.5rem 0 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+}
+
+.row.user { align-self: flex-end; align-items: flex-end; }
+.row.assistant, .row.note { align-self: flex-start; }
+
+.who {
+  margin: 0 0 0.25rem;
+  font: 600 0.7rem/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.bubble {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 1rem;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.row.user[data-sender="homeowner"] .bubble {
+  background: var(--homeowner);
+  color: white;
+}
+
+.row.user[data-sender="contractor"] .bubble {
+  background: var(--contractor);
+  color: white;
+}
+
+.row.assistant .bubble {
+  background: var(--form);
+  color: #f6f1e7;
+}
+
+.row.note .bubble {
+  background: transparent;
+  box-shadow: none;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.row.note.error .bubble { color: var(--warn); border-color: #e4c2b3; }
+
+.pending {
+  display: flex;
+  gap: 0.28rem;
+  padding: 0.85rem 1rem;
+}
+
+.pending i {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: #c8bfae;
+  animation: pulse 1s infinite ease-in-out;
+}
+
+.pending i:nth-child(2) { animation-delay: 0.15s; }
+.pending i:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+
+.drafts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.65rem 0 0.15rem;
+}
+
+.draft {
+  position: relative;
+}
+
+.draft img, .gallery img {
+  display: block;
+  object-fit: cover;
+  border-radius: 0.75rem;
+  background: #ddd6c8;
+}
+
+.draft img {
+  width: 4.4rem;
+  height: 4.4rem;
+}
+
+.draft button {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--card);
+  font: 600 0.75rem/1.2rem ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.gallery img {
+  max-width: 11.5rem;
+  max-height: 11.5rem;
+}
+
+.row.user .gallery { justify-content: flex-end; }
+
+.dock {
+  position: sticky;
+  bottom: 0;
+  flex-shrink: 0;
+  margin: 0 -1rem;
+  padding: 0.55rem 1rem calc(0.85rem + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(243, 239, 230, 0), var(--paper) 28%);
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.65rem;
+  padding-top: 0.55rem;
+}
+
+.shell.drop {
+  outline: 2px dashed var(--ink);
+  outline-offset: -0.6rem;
+}
+
+textarea {
+  flex: 1;
+  resize: none;
+  min-height: 2.7rem;
+  max-height: 9rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+
+textarea:focus, #token:focus, #new-chat:focus-visible, #clear-chat:focus-visible, #pause:focus-visible, #sign-out:focus-visible, #send:focus-visible, #operator-send:focus-visible, #login-send:focus-visible, #attach:focus-visible, .retry:focus-visible, .role:focus-visible, .operator input:focus {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .shell { padding: 1rem 0.8rem 0; }
+  .dock { margin: 0 -0.8rem; padding-left: 0.8rem; padding-right: 0.8rem; }
+  h1 { font-size: 1.5rem; }
+  .row { max-width: 92%; }
+}

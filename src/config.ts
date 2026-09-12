@@ -7,6 +7,7 @@ const schema = z.object({
   ADMIN_API_KEY: z.string().min(32),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().default('gpt-5-mini'),
+  OPENAI_IMAGE_MODEL: z.string().default('gpt-image-1.5'),
   MESSAGING_MODE: z.enum(['sandbox', 'live']).default('sandbox'),
   LINQ_API_KEY: z.string().default(''),
   LINQ_WEBHOOK_SECRET: z.string().default(''),
