@@ -11,6 +11,7 @@ The editable conversation prompt lives in [`prompts/designer.md`](prompts/design
 - PostgreSQL conversation history, project briefs, handoffs, and durable queued replies.
 - Debouncing, duplicate-event protection, per-chat serialization, retries, and stable Linq send idempotency keys.
 - Human takeover, pause/resume, explicit STOP handling, operator messages, and failed-turn inspection.
+- A public contractor landing page and signup flow, with a Messages handoff and downloadable FORM contact card.
 - A sandbox web UI and `npm run chat` that exercise the same backend without sending real texts.
 - Render Blueprint, PostgreSQL, health checks, graceful shutdown, and deployment after GitHub checks pass.
 
@@ -33,7 +34,7 @@ Edit `.env`: set `OPENAI_API_KEY`, and replace `ADMIN_API_KEY` with a random tok
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). In development the browser is signed in automatically. Switch Homeowner / Contractor, send the property address plus current-kitchen, floor-plan, or inspiration photos, and FORM generates a redesigned kitchen. Use **Admin** to clear the chat, pause, send an operator note, complete handoffs, or retry a failed turn. The composer stays at the bottom of the page. The sandbox never sends Linq messages.
+Open [http://localhost:3000](http://localhost:3000) for the contractor landing page, or [http://localhost:3000/signup](http://localhost:3000/signup) for signup. The sandbox is at [http://localhost:3000/sandbox](http://localhost:3000/sandbox). In development the browser is signed in automatically. Switch Homeowner / Contractor, send the property address plus current-kitchen, floor-plan, or inspiration photos, and FORM generates a redesigned kitchen. Use **Admin** to clear the chat, pause, send an operator note, complete handoffs, or retry a failed turn. The composer stays at the bottom of the page. The sandbox never sends Linq messages.
 
 Migrations run automatically on startup. The same backend is also available from a terminal:
 
@@ -49,8 +50,8 @@ npm run chat
 
 1. Connect the GitHub repository and create a Blueprint from `render.yaml`. It provisions a Node web service and PostgreSQL database on **paid plans**; review the plans in Render before creating them.
 2. Supply `OPENAI_API_KEY`. Render supplies `DATABASE_URL` and generates `ADMIN_API_KEY`. The application initially defaults to sandbox mode, so you can test it before connecting a real messaging line.
-3. Confirm `/healthz` and `/readyz` return 200. Open the Render service URL and sign in with the generated `ADMIN_API_KEY` from the service's environment settings. This is the same sandbox as local: homeowner/contractor roles, photos, and admin controls, with no Linq delivery. Uploaded sandbox photos live on the instance disk and do not survive deploys or restarts.
-4. The same admin token works for `npm run chat` and the `/api` routes. Keep the token private; anyone who has it can talk to the model and inspect conversations.
+3. Confirm `/healthz` and `/readyz` return 200. Open `/sandbox` on the Render service and sign in with the generated `ADMIN_API_KEY` from the service's environment settings. This is the same sandbox as local: homeowner/contractor roles, photos, and admin controls, with no Linq delivery. Uploaded sandbox photos live on the instance disk and do not survive deploys or restarts.
+4. The same admin token works for `npm run chat` and the operator `/api` routes. Keep the token private; anyone who has it can talk to the model and inspect conversations.
 5. Enable Linq as described below. Keep the service at one instance initially; the database queue supports safe per-chat locking during rolling deployments. The web sandbox stays available after you switch to live mode and remains isolated from real chats.
 
 Every push to `main` runs type checking, unit tests, a production build, and PostgreSQL integration tests. `autoDeployTrigger: checksPass` lets Render deploy after the checks succeed. Ensure GitHub Actions is enabled and Render has repository access. Migrations run before the service accepts traffic; queued work survives deploys. Use additive, backwards-compatible migrations so an older process can finish during a rolling deployment.
@@ -88,13 +89,26 @@ LINQ_ALLOWED_HANDLES=<optional comma-separated owned Linq phone numbers>
 
 Before switching live, the webhook endpoint returns 503. Complete configuration before testing real traffic. Start a group containing the Linq line, contractor, and homeowner, then send an introduction. The agent responds to incoming messages; it does not create groups or proactively text new contacts. Delivery and group capabilities depend on the participants' available transport and your Linq line.
 
+## Contractor onboarding
+
+The public flow collects first and last name, phone, email, optional website, and optional contractor license number. The React source is in `web/`; `npm run build:web` compiles it to ignored `public/site/`, served by the same Express app. Frontend requests use this service’s own origin. After frontend edits, rebuild with `npm run build:web` (or run it with `-- --watch` on the Vite command). `npm run dev` builds the frontend before starting the backend.
+
+Set `LINQ_FROM_NUMBER` to the FORM line in E.164 format; the configured line is `+16504447573`. Optional `FORM_CONTACT_EMAIL` and `FORM_CONTACT_WEBSITE` enrich the contact card. Registration returns 503 if the phone is missing. The service’s existing migration runner creates `contractor_signups` in its own database at startup. A submitted UUID makes retries idempotent and preserves the original details and assigned agent number. The public endpoint is limited to 20 requests per client per 15 minutes.
+
+Successful signup opens a user-initiated `sms:` link and offers a vCard 3.0 download. The device chooses iMessage when available. The contractor still confirms saving the native contact. Registration does not send texts, start a conversation, create password credentials, or expose operator access. Saved progress survives a refresh in the same tab; **Start another signup** clears it for another contractor.
+
+Run `npm run check` to build and test both surfaces, then `TEST_DATABASE_URL=postgresql://... npm run test:integration` against a dedicated test database. Tests use isolated schemas and mock all model and messaging calls.
+
 ## API
 
-The sandbox web UI is served at `/`. In development it reads `/config` and signs in with `ADMIN_API_KEY` automatically. In production `/config` only says that a token is required; paste the admin key into the gate. All `/api/*` endpoints require `Authorization: Bearer <ADMIN_API_KEY>`. Treat this as an operator-only credential; don't embed it in a customer-facing app. Health checks are public; webhooks use Linq signature verification instead.
+The contractor landing page is served at `/` (also `/contractors`), signup at `/signup`, and the sandbox web UI at `/sandbox`. In development it reads `/config` and signs in with `ADMIN_API_KEY` automatically. In production `/config` only says that a token is required; paste the admin key into the gate. All operator `/api/*` endpoints require `Authorization: Bearer <ADMIN_API_KEY>`. Treat this as an operator-only credential; don't embed it in a customer-facing app. The contractor signup POST and health checks are public; webhooks use Linq signature verification instead.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| GET | `/` | Sandbox web UI |
+| GET | `/`, `/contractors` | Contractor landing page |
+| GET | `/signup` | Contractor signup, Messages handoff, and contact card |
+| POST | `/api/contractors/signup` | Public contractor registration; no messages sent |
+| GET | `/sandbox` | Operator sandbox web UI |
 | GET | `/config` | Whether the UI must prompt for `ADMIN_API_KEY` |
 | GET | `/healthz` | Process health |
 | GET | `/readyz` | Database readiness |
@@ -147,7 +161,8 @@ Conversation content and briefs live in PostgreSQL. OpenAI requests use `store:f
 | Kitchen image generation | `src/design.ts`, `OPENAI_IMAGE_MODEL` |
 | Linq webhook mapping and outbound messages | `src/linq.ts` |
 | HTTP endpoints | `src/app.ts` |
-| Sandbox web UI | `public/` |
+| Contractor landing page and signup UI | `web/` |
+| Sandbox web UI | `public/index.html`, `public/app.js`, `public/styles.css` |
 | Persistence and queue behavior | `src/store.ts`, `src/worker.ts` |
 | Database changes | New numbered SQL file in `migrations/` |
 | Hosting and deploy behavior | `render.yaml`, `.github/workflows/ci.yml` |

@@ -1,4 +1,6 @@
 import type pg from 'pg';
+import type { z } from 'zod';
+import type { contractorSignupSchema } from './contractor-schema.js';
 import { transaction } from './db.js';
 import { emptyBrief, isStopRequest, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext, type Attachment } from './domain.js';
 
@@ -11,6 +13,16 @@ export interface ClaimedTurn { turn: Turn; client: pg.PoolClient }
 
 export class Store {
   constructor(readonly pool: pg.Pool, private readonly debounceMs = 1500) {}
+
+  async registerContractor(input: z.infer<typeof contractorSignupSchema>, agentPhone: string) {
+    const result = await this.pool.query<{ agent_phone: string }>(`
+      INSERT INTO contractor_signups(id,first_name,last_name,phone,email,website,license_number,agent_phone)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT(id) DO UPDATE SET id=contractor_signups.id
+      RETURNING agent_phone`, [input.submissionId, input.firstName, input.lastName, input.phone,
+      input.email, input.website ?? null, input.licenseNumber ?? null, agentPhone]);
+    return result.rows[0]!;
+  }
 
   private async duplicateReceipt(client: pg.PoolClient, message: IncomingMessage, channel: string) {
     const original = (await client.query(`SELECT m.*,c.external_id AS chat_id,c.paused,
