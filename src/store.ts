@@ -31,9 +31,9 @@ export class Store {
         VALUES($1,$2,$3,$4,$5) ON CONFLICT(channel,external_id) DO UPDATE SET updated_at=now()
         RETURNING *`, [message.chatId, channel, message.isGroup, message.owner, JSON.stringify(emptyBrief())]);
       const conversation = result.rows[0]!;
-      const inserted = await client.query<Message>(`INSERT INTO messages(conversation_id,external_id,role,sender,text,attachments,provider_sent_at)
-        VALUES($1,$2,'user',$3,$4,$5,$6) ON CONFLICT(external_id) DO NOTHING RETURNING *`,
-      [conversation.id, `${channel}:${message.messageId}`, message.sender, message.text, JSON.stringify(message.attachments), message.sentAt]);
+      const inserted = await client.query<Message>(`INSERT INTO messages(conversation_id,external_id,role,sender,text,attachments,provider_sent_at,service)
+        VALUES($1,$2,'user',$3,$4,$5,$6,$7) ON CONFLICT(external_id) DO NOTHING RETURNING *`,
+      [conversation.id, `${channel}:${message.messageId}`, message.sender, message.text, JSON.stringify(message.attachments), message.sentAt, message.service]);
       if (!inserted.rowCount) return this.duplicateReceipt(client, message, channel);
       if (isStopRequest(message.text)) {
         await client.query('UPDATE conversations SET paused=true WHERE id=$1', [conversation.id]);
@@ -63,7 +63,9 @@ export class Store {
       SELECT * FROM messages WHERE conversation_id=$1 AND ($2::bigint IS NULL OR seq <= $2 OR role != 'user')
       ORDER BY seq DESC LIMIT 40) history ORDER BY seq`, [id, throughSeq ?? null]);
     const handoffs = await this.pool.query<Handoff>('SELECT * FROM handoffs WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT 30', [id]);
-    return { conversation, messages: messages.rows, handoffs: handoffs.rows };
+    // Search the full history so a long conversation cannot trigger another introduction.
+    const replied = await this.pool.query<{ exists: boolean }>("SELECT EXISTS(SELECT 1 FROM messages WHERE conversation_id=$1 AND role='assistant')", [id]);
+    return { conversation, messages: messages.rows, handoffs: handoffs.rows, hasAssistantReply: replied.rows[0]!.exists };
   }
   async pause(id: string, paused: boolean) {
     return transaction(this.pool, async (client) => {
@@ -139,6 +141,13 @@ export class Store {
   }
   async saveDecision(id: string, decision: Decision) {
     await this.pool.query("UPDATE turns SET decision=$2 WHERE id=$1 AND status='processing'", [id, JSON.stringify(decision)]);
+  }
+  async claimReaction(id: string): Promise<boolean> {
+    // Reactions are best effort. Mark before sending so ambiguous failures and turn retries cannot repeat them.
+    const result = await this.pool.query(`UPDATE turns t SET reaction_attempted_at=now()
+      FROM conversations c WHERE t.id=$1 AND t.conversation_id=c.id AND NOT c.paused
+      AND t.kind='agent' AND t.status='processing' AND t.reaction_attempted_at IS NULL RETURNING t.id`, [id]);
+    return !!result.rowCount;
   }
   async finish(turn: Turn, decision: Decision, externalId: string | null, attachments: Attachment[] = []) {
     await transaction(this.pool, async (client) => {

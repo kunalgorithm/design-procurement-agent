@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { normalizeEvent, LinqMessenger } from '../src/linq.js';
 import { modelAttachment, OpenAIAgent } from '../src/agent.js';
 import { writeSandboxMedia } from '../src/media.js';
-import { isStopRequest, participantContext, senderRole, validateDecision, type Attachment } from '../src/domain.js';
+import { decisionSchema, isStopRequest, participantContext, reactionTarget, senderRole, validateDecision, type Attachment } from '../src/domain.js';
 import { buildKitchenPrompt, kitchenReferenceAttachments, OpenAIDesignStudio, shouldGenerateKitchen } from '../src/design.js';
 import { readConfig } from '../src/config.js';
 import { classifyError } from '../src/worker.js';
@@ -181,6 +181,58 @@ test('Linq SDK sends into the existing chat with a stable body idempotency key',
   assert.equal(await new LinqMessenger(client).send(chatId, 'Hello', key), 'provider-message-id');
 });
 
+test('Linq reactions use native tapbacks and custom emoji on the supplied message', async () => {
+  const messageId = randomUUID();
+  const bodies: unknown[] = [];
+  const client = new Linq({ apiKey: 'not-a-real-key', maxRetries: 0, fetch: async (url, init) => {
+    assert.equal(String(url), `https://api.linqapp.com/api/partner/v3/messages/${messageId}/reactions`);
+    assert.equal(init?.method, 'POST');
+    bodies.push(JSON.parse(String(init?.body)));
+    return new Response('{}', { headers: { 'content-type': 'application/json' } });
+  } });
+  const transport = new LinqMessenger(client);
+  await transport.react(messageId, '❤️');
+  await transport.react(messageId, '👍');
+  await transport.react(messageId, '👋');
+  assert.deepEqual(bodies, [
+    { operation: 'add', type: 'love' }, { operation: 'add', type: 'like' },
+    { operation: 'add', type: 'custom', custom_emoji: '👋' },
+  ]);
+});
+
+test('only the latest incoming iMessage can receive a reaction', () => {
+  const ctx = context();
+  const message = { id: randomUUID(), seq: '1', conversation_id: ctx.conversation.id,
+    external_id: `linq:${randomUUID()}`, service: 'iMessage', role: 'user' as const,
+    sender: '+12025550101', text: 'Hi', created_at: new Date(), attachments: [] };
+  ctx.messages.push(message);
+  assert.equal(reactionTarget(ctx), message.external_id.slice(5));
+  ctx.messages.push({ ...message, seq: '2', role: 'assistant' });
+  assert.equal(reactionTarget(ctx), message.external_id.slice(5));
+  ctx.messages.push({ ...message, seq: '3', service: 'SMS' });
+  assert.equal(reactionTarget(ctx), null);
+  ctx.messages.pop();
+  ctx.conversation.channel = 'sandbox';
+  assert.equal(reactionTarget(ctx), null);
+  ctx.conversation.channel = 'linq';
+  message.external_id = 'outbound:other-message';
+  assert.equal(reactionTarget(ctx), null);
+});
+
+test('conversation context distinguishes a first reply from an established chat', () => {
+  const ctx = context();
+  assert.match(participantContext(ctx), /Introduce yourself in your first text reply/);
+  assert.match(participantContext(ctx), /reactions are unavailable/);
+  ctx.hasAssistantReply = true;
+  assert.match(participantContext(ctx), /Do not repeat the introduction/);
+  assert.doesNotMatch(participantContext(ctx), /Introduce yourself in your first text reply/);
+});
+
+test('saved decisions from before reactions remain readable', () => {
+  const legacy = decision(); delete legacy.reaction;
+  assert.deepEqual(decisionSchema.parse(legacy), legacy);
+});
+
 test('OpenAI request uses strict structured output, sender context, and actual image content', async () => {
   const ctx = context(); const expected = decision();
   ctx.messages.push({ id: randomUUID(), seq: '1', conversation_id: ctx.conversation.id, role: 'user', sender: '+12025550101', text: 'Here is our kitchen', created_at: new Date(),
@@ -190,6 +242,7 @@ test('OpenAI request uses strict structured output, sender context, and actual i
     assert.equal(body.store, false);
     assert.equal(body.text.format.type, 'json_schema');
     assert.equal(body.text.format.strict, true);
+    assert.ok(body.text.format.schema.required.includes('reaction'));
     assert.equal(body.input[2].content[1].type, 'input_image');
     assert.match(body.input[2].content[0].text, /12025550101/);
     assert.match(body.input[2].content[0].text, /"role":null/);

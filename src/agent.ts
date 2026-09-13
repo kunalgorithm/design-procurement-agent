@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import type { ResponseInput, ResponseInputContent } from 'openai/resources/responses/responses';
-import { decisionSchema, participantContext, senderRole, type Agent, type AgentContext, type Attachment } from './domain.js';
+import { modelDecisionSchema, participantContext, senderRole, type Agent, type AgentContext, type Attachment } from './domain.js';
 import { readSandboxMediaDataUrl, sandboxMediaId } from './media.js';
 
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -62,7 +62,7 @@ export class OpenAIAgent implements Agent {
     }
     const generate = (messages: ResponseInput) => this.client.responses.parse({
       model: this.model, input: messages, store: false, max_output_tokens: 5000,
-      text: { format: zodTextFormat(decisionSchema, 'kitchen_conversation_turn') },
+      text: { format: zodTextFormat(modelDecisionSchema, 'kitchen_conversation_turn') },
     });
     let response;
     try { response = await generate(input); }
@@ -77,6 +77,6 @@ export class OpenAIAgent implements Agent {
       response = await generate(textOnly);
     }
     if (!response.output_parsed) throw new Error('MODEL_NO_STRUCTURED_OUTPUT');
-    return decisionSchema.parse(response.output_parsed);
+    return modelDecisionSchema.parse(response.output_parsed);
   }
 }

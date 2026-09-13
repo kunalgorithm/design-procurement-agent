@@ -36,7 +36,7 @@ after(async () => { await pool.end(); await admin.query(`DROP SCHEMA ${schema} C
 
 test('migrations are repeatable', async () => {
   await migrate(pool);
-  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '1');
+  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '2');
 });
 
 test('duplicate event and message deliveries enqueue and respond exactly once', async () => {
@@ -221,6 +221,94 @@ test('a quiet decision updates the brief without sending a text', async () => {
   await worker({ async respond() { return decision({ reply: null }); } }).tick();
   assert.equal(sent.length, 0);
   assert.equal((await store.getTurn(queued.turnId!))?.status, 'done');
+});
+
+test('iMessage reaction targets the latest sender in a burst and is not repeated on a reply retry', async () => {
+  const first = incoming();
+  const queued = await store.ingest(first, 'linq');
+  const last = incoming({ chatId: first.chatId, sender: '+12025550102', text: 'Hi FORM!' });
+  await store.ingest(last, 'linq');
+  const reactions: string[] = []; let sends = 0; let modelCalls = 0;
+  const transport: Messenger = {
+    async react(id, emoji) { reactions.push(id); assert.equal(emoji, '👋'); },
+    async send() { if (++sends === 1) throw new Error('Ambiguous text delivery'); return 'delivered'; },
+  };
+  const model: Agent = { async respond(ctx) {
+    modelCalls++; assert.equal(ctx.messages.at(-1)?.service, 'iMessage');
+    return decision({ reaction: '👋' });
+  } };
+  await worker(model, transport).tick();
+  await readyAgain(queued.turnId!);
+  await worker(model, transport).tick();
+  assert.deepEqual(reactions, [last.messageId]);
+  assert.equal(modelCalls, 1);
+  assert.equal(sends, 2);
+  assert.equal((await store.getTurn(queued.turnId!))?.status, 'done');
+});
+
+test('a reaction failure cannot block the text reply', async () => {
+  const queued = await store.ingest(incoming(), 'linq'); let reactions = 0;
+  await worker({ async respond() { return decision({ reaction: '❤️' }); } }, {
+    ...messenger, async react() { reactions++; throw Object.assign(new Error('Not supported'), { status: 400 }); },
+  }).tick();
+  assert.equal(reactions, 1);
+  assert.equal(sent.length, 1);
+  assert.equal((await store.getTurn(queued.turnId!))?.status, 'done');
+});
+
+test('a reaction can acknowledge a message without sending a text', async () => {
+  const message = incoming({ text: 'Thank you!' });
+  const queued = await store.ingest(message, 'linq'); const reactions: string[] = [];
+  await worker({ async respond() { return decision({ reply: null, reaction: '😊' }); } }, {
+    ...messenger, async react(id) { reactions.push(id); },
+  }).tick();
+  assert.deepEqual(reactions, [message.messageId]);
+  assert.equal(sent.length, 0);
+  assert.equal((await store.getTurn(queued.turnId!))?.status, 'done');
+});
+
+test('SMS, sandbox conversations, and sandbox mode never send native reactions', async () => {
+  const model: Agent = { async respond() { return decision({ reply: null, reaction: '👍' }); } };
+  let reactions = 0;
+  const transport: Messenger = { ...messenger, async react() { reactions++; } };
+  await store.ingest(incoming({ service: 'SMS' }), 'linq');
+  await worker(model, transport).tick();
+  await store.ingest(incoming(), 'sandbox');
+  await worker(model, transport).tick();
+  await store.ingest(incoming(), 'linq');
+  await new Worker(store, model, transport, logger, 100, 'sandbox').tick();
+  assert.equal(reactions, 0);
+});
+
+test('STOP during generation cancels reactions, and STOP during a reaction cancels the text', async () => {
+  const first = incoming(); const queued = await store.ingest(first, 'linq'); let reactions = 0;
+  await worker({ async respond() {
+    await store.ingest(incoming({ chatId: first.chatId, text: 'STOP' }), 'linq');
+    return decision({ reaction: '👋' });
+  } }, { ...messenger, async react() { reactions++; } }).tick();
+  assert.equal(reactions, 0);
+  assert.equal((await store.getTurn(queued.turnId!))?.status, 'cancelled');
+  const second = incoming(); const next = await store.ingest(second, 'linq');
+  await worker({ async respond() { return decision({ reaction: '👍' }); } }, {
+    ...messenger, async react() { await store.ingest(incoming({ chatId: second.chatId, text: 'STOP' }), 'linq'); },
+  }).tick();
+  assert.equal(sent.length, 0);
+  assert.equal((await store.getTurn(next.turnId!))?.status, 'cancelled');
+});
+
+test('first-reply context survives the 40-message history limit and resets with a new chat', async () => {
+  const message = incoming(); const queued = await store.ingest(message, 'sandbox');
+  assert.equal((await store.context(queued.conversationId!))?.hasAssistantReply, false);
+  await worker().tick();
+  for (let i = 0; i < 41; i++) await store.ingest(incoming({ chatId: message.chatId }), 'sandbox');
+  const ctx = await store.context(queued.conversationId!);
+  assert.equal(ctx?.messages.length, 40);
+  assert.equal(ctx?.messages.some((message) => message.role === 'assistant'), false);
+  assert.equal(ctx?.hasAssistantReply, true);
+  const fresh = await store.ingest(incoming(), 'sandbox');
+  assert.equal((await store.context(fresh.conversationId!))?.hasAssistantReply, false);
+  await store.clearConversation(queued.conversationId!);
+  assert.equal((await store.context(queued.conversationId!))?.hasAssistantReply, false);
 });
 
 test('webhook signatures require the exact body and a recent timestamp; delivery acknowledges before AI work', async () => {

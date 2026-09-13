@@ -141,7 +141,7 @@ Conversation content and briefs live in PostgreSQL. OpenAI requests use `store:f
 
 | Change | File |
 | --- | --- |
-| Tone, intake questions, group etiquette | `prompts/designer.md` |
+| Personality, introduction, reaction choices, intake questions, group etiquette | `prompts/designer.md` |
 | Brief fields and handoff rules | `src/domain.ts` |
 | Model choice and image input | `src/agent.ts`, `OPENAI_MODEL` |
 | Kitchen image generation | `src/design.ts`, `OPENAI_IMAGE_MODEL` |
@@ -153,6 +153,10 @@ Conversation content and briefs live in PostgreSQL. OpenAI requests use `store:f
 | Hosting and deploy behavior | `render.yaml`, `.github/workflows/ci.yml` |
 
 The prompt is reread on each turn, so local prompt edits take effect immediately. Use **New chat** in the web UI or `npm run chat` with `/new` to compare a fresh conversation. In production, commit and push to `main` to send changes through CI and Render.
+
+To change FORM's personality, edit **Voice**, **First conversation reply**, and **Message reactions** in `prompts/designer.md`. The default introduction is "Hi, I'm FORM. I'm an AI agent that can help you design your new kitchen." It appears in the first useful text reply for each conversation; existing chats keep their history and do not restart the introduction. A new sandbox chat is the simplest way to preview it.
+
+FORM can add an occasional ❤️, 👍, 😊, 🙌, ✨, or 👋 reaction to the latest incoming iMessage, including in groups. Reactions are separate from emojis in reply text. SMS and sandbox chats skip native reactions. Each turn attempts its reaction at most once; a reaction failure is logged and does not block the reply. To change the allowed emoji set, update `reactionSchema` in `src/domain.ts` as well as the prompt. These personality settings do not change `OPENAI_MODEL` (`gpt-5.6-terra`).
 
 ## Tests
 
@@ -168,5 +172,6 @@ Prefer a dedicated database for integration tests. Each run creates and drops it
 - [Linq iMessage API](https://docs.linqapp.com/channel/imessage/api/)
 - [Linq webhook guide](https://docs.linqapp.com/channel/imessage/guides/webhooks)
 - [Linq send-message endpoint](https://docs.linqapp.com/channel/imessage/api/resources/chats/subresources/messages/methods/send)
+- [Linq iMessage reactions](https://docs.linqapp.com/channel/imessage/guides/messaging/reactions/)
 - [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
 - [Render Blueprint specification](https://render.com/docs/blueprint-spec)

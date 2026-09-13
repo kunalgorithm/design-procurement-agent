@@ -1,6 +1,6 @@
 import Linq from '@linqapp/sdk';
 import { z } from 'zod';
-import type { IncomingMessage, Messenger } from './domain.js';
+import type { IncomingMessage, Messenger, Reaction } from './domain.js';
 
 const handle = z.object({ handle: z.string().min(1).max(200), is_me: z.boolean().nullish() });
 const eventSchema = z.object({
@@ -46,6 +46,12 @@ export function createLinq(apiKey: string, webhookSecret: string) {
 
 export class LinqMessenger implements Messenger {
   constructor(private readonly client: Linq) {}
+  async react(messageId: string, emoji: Reaction): Promise<void> {
+    await this.client.messages.addReaction(messageId, emoji === '❤️'
+      ? { operation: 'add', type: 'love' }
+      : emoji === '👍' ? { operation: 'add', type: 'like' }
+        : { operation: 'add', type: 'custom', custom_emoji: emoji });
+  }
   async send(chatId: string, text: string, idempotencyKey: string): Promise<string> {
     const response = await this.client.chats.messages.send(chatId, {
       message: { parts: [{ type: 'text', value: text }], idempotency_key: idempotencyKey },

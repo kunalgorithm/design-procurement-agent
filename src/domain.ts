@@ -25,11 +25,17 @@ export const emptyBrief = (): Brief => ({
 
 export const taskKindSchema = z.enum(['design', 'proposal', 'procurement', 'human']);
 export type TaskKind = z.infer<typeof taskKindSchema>;
+export const reactionSchema = z.enum(['❤️', '👍', '😊', '🙌', '✨', '👋']);
+export type Reaction = z.infer<typeof reactionSchema>;
 export const decisionSchema = z.object({
   reply: z.string().max(3000).nullable(),
+  // Optional when reading decisions persisted before reactions were introduced.
+  reaction: reactionSchema.nullable().optional(),
   brief: briefSchema,
   handoff: z.object({ kind: taskKindSchema, summary: z.string().min(1).max(2000) }).nullable(),
 });
+// OpenAI's strict output schema requires every field, including nullable ones.
+export const modelDecisionSchema = decisionSchema.extend({ reaction: reactionSchema.nullable() });
 export type Decision = z.infer<typeof decisionSchema>;
 
 export const attachmentSchema = z.object({
@@ -50,15 +56,26 @@ export interface Conversation {
 }
 export interface Message {
   id: string; seq: string; conversation_id: string;
+  external_id?: string | null; service?: string | null;
   role: 'user' | 'assistant' | 'operator'; sender: string;
   text: string; attachments: Attachment[]; created_at: Date;
 }
 export interface Handoff {
   id: string; kind: TaskKind; summary: string; status: 'open' | 'completed';
 }
-export interface AgentContext { conversation: Conversation; messages: Message[]; handoffs: Handoff[] }
+export interface AgentContext { conversation: Conversation; messages: Message[]; handoffs: Handoff[]; hasAssistantReply?: boolean }
 export interface Agent { respond(context: AgentContext): Promise<Decision> }
-export interface Messenger { send(chatId: string, text: string, idempotencyKey: string): Promise<string> }
+export interface Messenger {
+  send(chatId: string, text: string, idempotencyKey: string): Promise<string>;
+  react?(messageId: string, emoji: Reaction): Promise<void>;
+}
+
+export function reactionTarget(context: AgentContext): string | null {
+  if (context.conversation.channel !== 'linq') return null;
+  const message = context.messages.findLast((message) => message.role === 'user');
+  if (message?.service !== 'iMessage' || !message.external_id?.startsWith('linq:')) return null;
+  return message.external_id.slice('linq:'.length) || null;
+}
 
 export const isStopRequest = (text: string) => /^(stop|unsubscribe|cancel|end|quit|stop all|opt[ -]?out)[.!\s]*$/i.test(text.trim());
 
@@ -70,6 +87,13 @@ export function senderRole(sender: string) {
 export function participantContext(context: AgentContext) {
   const type = context.conversation.is_group ? 'group' : 'direct message';
   const lines = [`Conversation type: ${type}.`];
+  const hasReplied = context.hasAssistantReply ?? context.messages.some((message) => message.role === 'assistant');
+  lines.push(hasReplied
+    ? 'FORM has already replied in this conversation. Do not repeat the introduction.'
+    : 'FORM has not replied in this conversation yet. Introduce yourself in your first text reply.');
+  lines.push(reactionTarget(context)
+    ? 'An iMessage reaction is available for the latest incoming user message. Choose one emoji or null.'
+    : 'Message reactions are unavailable on this turn. Set reaction to null.');
   if (context.conversation.channel === 'sandbox') {
     lines.push('This conversation already includes the homeowner and the contractor. The sender handle "homeowner" is the homeowner; "contractor" is the contractor. Do not ask who is who or which person has which role.');
   } else {
