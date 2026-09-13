@@ -45,10 +45,8 @@ export default function ContractorSignupPage() {
   }, []);
 
   useEffect(() => {
-    if (step > 0) {
-      heading.current?.focus({ preventScroll: true });
-      window.scrollTo(0, 0);
-    }
+    if (step > 0) heading.current?.focus({ preventScroll: true });
+    window.scrollTo(0, 0);
   }, [step]);
 
   useEffect(() => {
