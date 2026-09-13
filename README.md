@@ -7,7 +7,7 @@ The editable conversation prompt lives in [`prompts/designer.md`](prompts/design
 ## What works
 
 - Signed Linq webhooks, sender-aware group conversations, and replies to the originating chat.
-- OpenAI Responses with structured decisions and image/PDF input. Default chat model: `gpt-5-mini`. Kitchen renders use the Images API (`OPENAI_IMAGE_MODEL`, default `gpt-image-1.5`).
+- OpenAI Responses with structured decisions and image/PDF input. Default chat model: `gpt-5.6-terra`. Kitchen renders use the Images API (`OPENAI_IMAGE_MODEL`, default `gpt-image-1.5`).
 - PostgreSQL conversation history, project briefs, handoffs, and durable queued replies.
 - Debouncing, duplicate-event protection, per-chat serialization, retries, and stable Linq send idempotency keys.
 - Human takeover, pause/resume, explicit STOP handling, operator messages, and failed-turn inspection.
