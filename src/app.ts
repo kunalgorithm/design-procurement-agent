@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import express, { type ErrorRequestHandler, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import { z } from 'zod';
+import { contractorRouter } from './contractors.js';
 import type { Config } from './config.js';
 import { createLinq, normalizeEvent } from './linq.js';
 import { BadMediaError, readSandboxMedia, saveSandboxUploads } from './media.js';
@@ -37,11 +38,13 @@ async function queueSandboxMessage(store: Store, req: Request, res: Response) {
 export function createApp(config: Config, store: Store) {
   const app = express();
   app.disable('x-powered-by');
+  // The deployed service receives traffic through Render’s reverse proxy.
+  if (config.NODE_ENV === 'production') app.set('trust proxy', 1);
   app.use(helmet({
     contentSecurityPolicy: {
       useDefaults: true,
       directives: {
-        'img-src': ["'self'", 'data:', 'blob:'],
+        'img-src': ["'self'", 'data:', 'blob:', 'https://images.ctfassets.net'],
         ...(config.NODE_ENV === 'development' ? { 'upgrade-insecure-requests': null } : {}),
       },
     },
@@ -82,6 +85,8 @@ export function createApp(config: Config, store: Store) {
     }
     res.json({ authRequired: true });
   });
+
+  app.use('/api/contractors', express.json({ limit: '16kb' }), contractorRouter(config, store));
 
   const api = express.Router();
   api.use((req, res, next) => {
@@ -153,7 +158,12 @@ export function createApp(config: Config, store: Store) {
     res.json({ handoff: task });
   });
   app.use('/api', api);
-  app.use(express.static(publicDir, { index: 'index.html' }));
+  app.get(['/', '/contractors', '/signup'], (_req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(`${publicDir}/site/index.html`);
+  });
+  app.get('/sandbox', (_req, res) => res.sendFile(`${publicDir}/index.html`));
+  app.use(express.static(publicDir, { index: false }));
   app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
   const errors: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
     if (error instanceof z.ZodError) {

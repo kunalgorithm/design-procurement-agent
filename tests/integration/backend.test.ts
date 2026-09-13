@@ -36,7 +36,7 @@ after(async () => { await pool.end(); await admin.query(`DROP SCHEMA ${schema} C
 
 test('migrations are repeatable', async () => {
   await migrate(pool);
-  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '2');
+  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '3');
 });
 
 test('duplicate event and message deliveries enqueue and respond exactly once', async () => {

@@ -19,6 +19,8 @@ services:
         fromDatabase:
           name: design-procurement-agent-db
           property: connectionString
+      - key: LINQ_FROM_NUMBER
+        value: "+16504447573"
       - key: ADMIN_API_KEY
         generateValue: true
       - key: OPENAI_API_KEY

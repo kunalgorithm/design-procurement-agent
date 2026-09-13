@@ -26,7 +26,7 @@ test('development serves the sandbox chat UI and bootstraps an admin token', asy
     async getTurn(id) { return { id, status: 'done', decision: { reply: 'Hello', brief: {}, handoff: null } } as never; },
     async listConversations() { return []; },
   });
-  const page = await request(server).get('/').expect(200);
+  const page = await request(server).get('/sandbox').expect(200);
   assert.match(page.headers['content-type'] ?? '', /html/);
   assert.match(page.text, /FORM sandbox/);
   assert.match(page.text, /Clear chat/);
@@ -84,7 +84,7 @@ test('admin can pause and clear a sandbox conversation', async () => {
 
 test('production serves the sandbox UI but does not expose the admin token', async () => {
   const server = app('production');
-  const page = await request(server).get('/').expect(200);
+  const page = await request(server).get('/sandbox').expect(200);
   assert.match(page.headers['content-type'] ?? '', /html/);
   const config = await request(server).get('/config').expect(200);
   assert.equal(config.body.authRequired, true);

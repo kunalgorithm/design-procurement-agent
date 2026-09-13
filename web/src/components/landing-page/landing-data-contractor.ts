@@ -1,0 +1,568 @@
+export const CONTRACTOR_LANDING_DATA = {
+  items: [
+    {
+      moduleTitle: 'Contractors: Win More Bids With Free Professional Design.',
+      contentSlotsCollection: {
+        total: 1,
+        items: [
+          {
+            markdown: {
+              json: {
+                data: {},
+                content: [
+                  {
+                    data: {},
+                    content: [
+                      {
+                        data: {},
+                        marks: [],
+                        value:
+                          '3D designs + priced materials list in days, not weeks. Earn 5% referral on every project. Design + procurement coordinated in one place. No apps, no complexity, no upfront cost.',
+                        nodeType: 'text',
+                      },
+                    ],
+                    nodeType: 'paragraph',
+                  },
+                ],
+                nodeType: 'document',
+              },
+            },
+            video: null,
+            slotTitle: 'Contractors: Win More Bids With Free Professional Design.',
+            actionText: 'Get started',
+            actionUrl: '/signup',
+            description: null,
+            isLeft: null,
+            meta: null,
+            photosCollection: {
+              items: [
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/7JGOslOaPo0lPlQzCHBRRA/62e38192ebd276d6e36be616fffa98f0/HeroFormDesign.webp',
+                  contentType: 'image/webp',
+                  title: 'HeroFormDesign',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
+      moduleTitle: 'Built on Real Kitchen Design Expertise',
+      contentSlotsCollection: {
+        total: 1,
+        items: [
+          {
+            markdown: null,
+            video: null,
+            slotTitle: 'Built by the team behind FORM Kitchens, with 2,000+ projects delivered and featured in:',
+            actionText: null,
+            actionUrl: null,
+            description: null,
+            isLeft: null,
+            meta: null,
+            photosCollection: {
+              items: [
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/5VI8ysidSMSWSMg7vqXrg8/5d659f4d6b7b58dc1e166fc3ec5db4ee/elleDecor.svg',
+                  contentType: 'image/svg+xml',
+                  title: 'elleDecor',
+                },
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/1yk5gPfnW9wmt6V24vd3kn/8169363529db71d0263e22a6675e714a/goodHousekeeping.svg',
+                  contentType: 'image/svg+xml',
+                  title: 'goodHousekeeping',
+                },
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/GW3N7sIcte2MMzhmqsk6v/c8efbc7d79a9adaeb99263a6b9d34dfd/domino.svg',
+                  contentType: 'image/svg+xml',
+                  title: 'domino',
+                },
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/2aFR5SBJWdKSyAXTiaMiEc/9d95f9881bbe5bf3b6f53fffc8e8a6f3/houzz.svg',
+                  contentType: 'image/svg+xml',
+                  title: 'houzz',
+                },
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/5urDJABweCYdaz7NwJdrLL/57d3b0a8fa78a9d017ddd74bf073daec/architectsArtisans.svg',
+                  contentType: 'image/svg+xml',
+                  title: 'architectsArtisans',
+                },
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/6sFmtEu1vXdc1PcsZZeCYq/4385766cc642e8cc891ae3f9a3bed712/betterHomesGardens.svg',
+                  contentType: 'image/svg+xml',
+                  title: 'betterHomesGardens',
+                },
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/6yuIDIpra14A4MRKI2Pi1X/a3b928a57411d212fdd3afe61352e9d9/businessOfHome.svg',
+                  contentType: 'image/svg+xml',
+                  title: 'businessOfHome',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
+      moduleTitle: 'Planner video',
+      contentSlotsCollection: {
+        total: 1,
+        items: [
+          {
+            photosCollection: {
+              items: [],
+            },
+            markdown: null,
+            slotTitle: 'Planner video',
+            actionText: null,
+            actionUrl: null,
+            description: null,
+            isLeft: null,
+            meta: null,
+            video: {
+              title: 'FORM Design How It Works',
+              embedUrl:
+                'https://player.vimeo.com/video/1056165921?h=c14ba0c160&amp;badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479',
+            },
+          },
+        ],
+      },
+    },
+    {
+      moduleTitle: '3 Simple Steps',
+      contentSlotsCollection: {
+        total: 4,
+        items: [
+          {
+            photosCollection: {
+              items: [],
+            },
+            markdown: null,
+            video: null,
+            slotTitle: '3 Simple Steps',
+            actionText: 'Get started',
+            actionUrl: '/signup',
+            description: null,
+            isLeft: null,
+            meta: null,
+          },
+          {
+            markdown: {
+              json: {
+                nodeType: 'document',
+                data: {},
+                content: [
+                  {
+                    nodeType: 'paragraph',
+                    data: {},
+                    content: [
+                      {
+                        nodeType: 'text',
+                        value:
+                          'Connect with your FORM design agent in Messages. Share your project details and we handle the design intake.',
+                        marks: [],
+                        data: {},
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+            video: null,
+            slotTitle: 'Meet Your Design Agent',
+            actionText: null,
+            actionUrl: null,
+            description: null,
+            isLeft: false,
+            meta: null,
+            photosCollection: {
+              items: [
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/4XkBxkxGKQDH6o7tnE6AgD/4e8a826932e0896f3f83ec070f3fc373/order-card.svg',
+                  contentType: 'image/svg+xml',
+                  title: 'order-card',
+                },
+              ],
+            },
+          },
+          {
+            markdown: {
+              json: {
+                nodeType: 'document',
+                data: {},
+                content: [
+                  {
+                    nodeType: 'paragraph',
+                    data: {},
+                    content: [
+                      {
+                        nodeType: 'text',
+                        value:
+                          'We design and gather quotes across our supplier network for cabinets, flooring, windows, doors, fixtures, and more.',
+                        marks: [],
+                        data: {},
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+            video: null,
+            slotTitle: 'Get Design + Pricing',
+            actionText: null,
+            actionUrl: null,
+            description: null,
+            isLeft: null,
+            meta: null,
+            photosCollection: {
+              items: [
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/4z5ualUyb8yFdXwK4wAinZ/587b511e8cc0700fd5877f0ab3e3b4fc/design-card.svg',
+                  contentType: 'image/svg+xml',
+                  title: 'design-card',
+                },
+              ],
+            },
+          },
+          {
+            markdown: {
+              json: {
+                nodeType: 'document',
+                data: {},
+                content: [
+                  {
+                    nodeType: 'paragraph',
+                    data: {},
+                    content: [
+                      {
+                        nodeType: 'text',
+                        value:
+                          'Outshine competitors with professional proposals and better pricing on materials—typically 20% below retail.',
+                        marks: [],
+                        data: {},
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+            video: null,
+            slotTitle: 'Win The Job',
+            actionText: null,
+            actionUrl: null,
+            description: null,
+            isLeft: null,
+            meta: null,
+            photosCollection: {
+              items: [
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/1Hc0cJJoNZpH1tXoFWEueR/16016638d667e1b90d304b5874eb89ca/get-paid-card.svg',
+                  contentType: 'image/svg+xml',
+                  title: 'get-paid-card',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
+      moduleTitle: 'Why Trade Professionals Love FORM',
+      contentSlotsCollection: {
+        total: 1,
+        items: [
+          {
+            photosCollection: {
+              items: [],
+            },
+            markdown: null,
+            video: null,
+            slotTitle: 'Why Trade Professionals Love FORM',
+            actionText: null,
+            actionUrl: null,
+            description: null,
+            isLeft: null,
+            meta: null,
+          },
+        ],
+      },
+    },
+    {
+      moduleTitle: 'Close More Business',
+      contentSlotsCollection: {
+        total: 1,
+        items: [
+          {
+            markdown: {
+              json: {
+                nodeType: 'document',
+                data: {},
+                content: [
+                  {
+                    nodeType: 'paragraph',
+                    data: {},
+                    content: [
+                      {
+                        nodeType: 'text',
+                        value:
+                          "Deals stall when clients can't visualize the project. Fast professional 3D designs keep momentum going while competitors lose bids to indecision.",
+                        marks: [],
+                        data: {},
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+            video: null,
+            slotTitle: 'Close More Business',
+            actionText: null,
+            actionUrl: null,
+            description: null,
+            isLeft: true,
+            meta: null,
+            photosCollection: {
+              items: [
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/4D43iQBbtMa9pDfsp44ZJ9/2b8f2623f380ff8b47732eea91310742/proven-process.png',
+                  contentType: 'image/png',
+                  title: 'proven-process',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
+      moduleTitle: 'Better Prices That Win Bids',
+      contentSlotsCollection: {
+        total: 1,
+        items: [
+          {
+            markdown: {
+              json: {
+                data: {},
+                content: [
+                  {
+                    data: {},
+                    content: [
+                      {
+                        data: {},
+                        marks: [],
+                        value:
+                          'We compare pricing across our supplier network to get you the best rates on cabinets, flooring, windows, doors, fixtures, and more—typically 20% below retail.',
+                        nodeType: 'text',
+                      },
+                    ],
+                    nodeType: 'paragraph',
+                  },
+                ],
+                nodeType: 'document',
+              },
+            },
+            video: null,
+            slotTitle: 'Better Prices That Win Bids',
+            actionText: null,
+            actionUrl: null,
+            description: null,
+            isLeft: false,
+            meta: null,
+            photosCollection: {
+              items: [
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/2oVXrk8A2zGxUmZBGZYwvX/ac17725ddaea2c43830b2b48a7f8dfba/computer-catalog.png',
+                  contentType: 'image/png',
+                  title: 'computer-catalog',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
+      moduleTitle: 'Zero Learning Curve',
+      contentSlotsCollection: {
+        total: 1,
+        items: [
+          {
+            markdown: {
+              json: {
+                data: {},
+                content: [
+                  {
+                    data: {},
+                    content: [
+                      {
+                        data: {},
+                        marks: [],
+                        value:
+                          'Connect directly in Messages—no new apps to download, no training required. If you can text, you can use FORM.',
+                        nodeType: 'text',
+                      },
+                    ],
+                    nodeType: 'paragraph',
+                  },
+                ],
+                nodeType: 'document',
+              },
+            },
+            video: null,
+            slotTitle: 'Zero Learning Curve',
+            actionText: null,
+            actionUrl: null,
+            description: null,
+            isLeft: true,
+            meta: null,
+            photosCollection: {
+              items: [
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/2tb45yscss3HKq1BVwLFOw/9b802923133c18f95e5a7ba474a7c4bc/mobile-dashboard.png',
+                  contentType: 'image/png',
+                  title: 'mobile-dashboard',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
+      moduleTitle: 'Coordinated Design & Materials',
+      contentSlotsCollection: {
+        total: 1,
+        items: [
+          {
+            markdown: {
+              json: {
+                data: {},
+                content: [
+                  {
+                    data: {},
+                    content: [
+                      {
+                        data: {},
+                        marks: [],
+                        value:
+                          'Stop juggling quotes from flooring reps, cabinet dealers, window suppliers, and showrooms. FORM acts as your design and procurement team—coordinating sourcing and pricing across all materials.',
+                        nodeType: 'text',
+                      },
+                    ],
+                    nodeType: 'paragraph',
+                  },
+                ],
+                nodeType: 'document',
+              },
+            },
+            video: null,
+            slotTitle: 'Coordinated Design & Materials',
+            actionText: null,
+            actionUrl: null,
+            description: null,
+            isLeft: false,
+            meta: null,
+            photosCollection: {
+              items: [
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/6W8pKqnhd1cRzyOhQ4zONu/042582cc431b8504864c5feee806346b/computer-cs.png',
+                  contentType: 'image/png',
+                  title: 'computer-cs',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
+      moduleTitle: 'Better Economics for Everyone',
+      contentSlotsCollection: {
+        total: 1,
+        items: [
+          {
+            markdown: {
+              json: {
+                data: {},
+                content: [
+                  {
+                    data: {},
+                    content: [
+                      {
+                        data: {},
+                        marks: [],
+                        value:
+                          "Our trade-only model is how we deliver better pricing. We aggregate contractor volume for wholesale rates homeowners can't access directly. Contractors earn 5% on every order, clients save 20%, and we avoid retail marketing costs. Everyone wins.",
+                        nodeType: 'text',
+                      },
+                    ],
+                    nodeType: 'paragraph',
+                  },
+                ],
+                nodeType: 'document',
+              },
+            },
+            video: null,
+            slotTitle: 'Better Economics for Everyone',
+            actionText: null,
+            actionUrl: null,
+            description: null,
+            isLeft: true,
+            meta: null,
+            photosCollection: {
+              items: [
+                {
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/1SmGld7YG03T8ZtEQn5g48/6feab31aff264abfba348501b778842d/mobile-contr.gif',
+                  contentType: 'image/gif',
+                  title: 'mobile-contr',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
+      moduleTitle: 'Ready to Win More Jobs?',
+      contentSlotsCollection: {
+        total: 1,
+        items: [
+          {
+            photosCollection: {
+              items: [],
+            },
+            markdown: {
+              json: {
+                nodeType: 'document',
+                data: {},
+                content: [
+                  {
+                    nodeType: 'paragraph',
+                    data: {},
+                    content: [
+                      {
+                        nodeType: 'text',
+                        value:
+                          'Get started with your FORM design agent in minutes. Share a project and take the next step toward winning the job.',
+                        marks: [],
+                        data: {},
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+            video: null,
+            slotTitle: 'Ready to Win More Jobs?',
+            actionText: 'Get started',
+            actionUrl: '/signup',
+            description: null,
+            isLeft: null,
+            meta: null,
+          },
+        ],
+      },
+    },
+  ],
+} as const;
