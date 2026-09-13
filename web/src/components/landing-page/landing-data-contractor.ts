@@ -466,9 +466,9 @@ export const CONTRACTOR_LANDING_DATA = {
             photosCollection: {
               items: [
                 {
-                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/6W8pKqnhd1cRzyOhQ4zONu/042582cc431b8504864c5feee806346b/computer-cs.png',
+                  url: '/customer-success-team.png',
                   contentType: 'image/png',
-                  title: 'computer-cs',
+                  title: 'FORM client experience team displayed on a desktop monitor',
                 },
               ],
             },

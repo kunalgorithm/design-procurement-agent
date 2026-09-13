@@ -42,7 +42,7 @@ export function HomePage() {
         <SectionContent
           className="mt-32 px-4 lg:px-0"
           contentClassName="bg-black-100"
-          imgClassName="md:object-cover"
+          imgClassName="aspect-[3/2] md:object-cover"
           data={formDesignLandingData.items[8].contentSlotsCollection}
         />
         <SectionContent
