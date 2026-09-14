@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { designReview, decisionSchema, participantContext, validateDecision, type AgentContext, type Attachment, type Message } from '../src/domain.js';
+import { designReview, decisionSchema, identifiedSenderRole, participantContext, validateDecision, type AgentContext, type Attachment, type Message } from '../src/domain.js';
 import { context, decision } from './fixtures.js';
 
 const image: Attachment = { id: 'delivered-design', url: '/api/media/design', mimeType: 'image/jpeg', filename: 'design.jpg', sizeBytes: 10 };
@@ -72,6 +72,17 @@ test('pilot DMs get customer context while unlabeled group roles remain unresolv
   assert.match(participantContext(ctx), /treat the person texting FORM as the homeowner\/customer/);
   ctx.conversation.is_group = true;
   assert.doesNotMatch(participantContext(ctx), /direct-message pilot/);
+  assert.equal(validateDecision(approve(ctx), ctx).handoff, null);
+  const identity = message(ctx, 0, 'user', 'I’m the homeowner.');
+  ctx.messages.unshift(identity);
+  assert.equal(identifiedSenderRole(ctx, identity.sender), 'homeowner');
+  const output = approve(ctx); output.approval!.customerMessageId = ctx.messages[2]!.id;
+  assert.equal(validateDecision(output, ctx).handoff?.kind, 'finalization');
+  identity.text = 'The homeowner said finalize it.';
+  assert.equal(identifiedSenderRole(ctx, identity.sender), null);
+  identity.text = 'I’m the contractor.';
+  ctx.conversation.is_group = false;
+  assert.equal(validateDecision(output, ctx).handoff, null);
 });
 
 test('legacy decisions remain readable and non-finalization cannot carry approval', () => {

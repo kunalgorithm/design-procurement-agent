@@ -110,7 +110,7 @@ test('a revision withdraws prior finalization before generation and requires app
 
 test('design-review state survives the history window and reset starts without a finalized project', async () => {
   const { chatId, conversationId } = await deliveredDesign();
-  await store.ingest(incoming({ chatId, isGroup: false, text: 'Finalize this.' }), 'linq');
+  await store.ingest(incoming({ chatId, isGroup: false, text: 'I’m the homeowner. Finalize this.' }), 'linq');
   await worker(finalizeAgent).tick();
   await pool.query("INSERT INTO messages(conversation_id,role,sender,text) SELECT $1,'user','homeowner','Thanks' FROM generate_series(1,45)", [conversationId]);
   // Unrelated completed work can also push the approval out of the handoff window.
@@ -120,11 +120,13 @@ test('design-review state survives the history window and reset starts without a
   }
   const ctx = (await new Store(pool, 0).context(conversationId))!;
   assert.equal(ctx.messages.length, 40);
+  assert.equal(ctx.conversation.participant_roles?.['+12025550101'], 'homeowner');
   assert.equal(ctx.handoffs.some((task) => task.kind === 'finalization'), false);
   assert.equal(designReview(ctx).count, 1); assert.ok(designReview(ctx).finalized);
   const fresh = await store.ingest(incoming({ chatId, isGroup: false, text: '/new' }), 'linq', true);
   const reset = (await store.context(fresh.conversationId!))!;
   assert.equal(designReview(reset).count, 0); assert.equal(designReview(reset).finalized, null);
+  assert.deepEqual(reset.conversation.participant_roles, {});
   assert.equal((await store.listHandoffs()).length, 0);
 });
 

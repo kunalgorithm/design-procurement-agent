@@ -4,7 +4,7 @@ import type { z } from 'zod';
 import type { contractorSignupSchema } from './contractor-schema.js';
 import { transaction } from './db.js';
 import { parseChatCommand, type ChatCommand } from './chat-commands.js';
-import { emptyBrief, isStopRequest, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext, type Attachment } from './domain.js';
+import { emptyBrief, isStopRequest, selfIdentifiedRole, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext, type Attachment } from './domain.js';
 
 export interface Turn {
   id: string; conversation_id: string; kind: 'agent' | 'operator' | 'control';
@@ -68,6 +68,8 @@ export class Store {
       [conversation.id, `${channel}:${message.messageId}`, message.sender, message.text, JSON.stringify(message.attachments), message.sentAt, message.service, !!command]);
       if (!inserted.rowCount) return this.duplicateReceipt(client, message, channel);
       if (command) return this.handleCommand(client, conversation, inserted.rows[0]!, command, adminAuthorized);
+      const role = selfIdentifiedRole(message.text);
+      if (role) await client.query('UPDATE conversations SET participant_roles=participant_roles || jsonb_build_object($2::text,$3::text) WHERE id=$1', [conversation.id,message.sender,role]);
       if (isStopRequest(message.text)) {
         await client.query('UPDATE conversations SET paused=true WHERE id=$1', [conversation.id]);
         await client.query("UPDATE turns SET status='cancelled',completed_at=now() WHERE conversation_id=$1 AND kind='agent' AND status IN ('pending','processing','failed')", [conversation.id]);
@@ -181,7 +183,7 @@ export class Store {
       await client.query('DELETE FROM handoffs WHERE conversation_id=$1', [id]);
       await client.query('DELETE FROM turns WHERE conversation_id=$1', [id]);
       await client.query('DELETE FROM messages WHERE conversation_id=$1', [id]);
-      return (await client.query<Conversation>('UPDATE conversations SET brief=$2,paused=false,updated_at=now() WHERE id=$1 RETURNING *',
+      return (await client.query<Conversation>("UPDATE conversations SET brief=$2,participant_roles='{}'::jsonb,paused=false,updated_at=now() WHERE id=$1 RETURNING *",
         [id, JSON.stringify(emptyBrief())])).rows[0];
     });
   }

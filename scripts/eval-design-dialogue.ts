@@ -51,6 +51,11 @@ const group = setup(2, 'I love it. Finalize this version.', finalizeQuestion); g
 add('group_customer_returns_to_contractor', group, 'finalization', (out) => assert.match(out.reply ?? '', /Sam|contractor/i));
 const unknown = setup(2, 'Finalize this.', finalizeQuestion); unknown.conversation.is_group = true; unknown.messages[0]!.text = 'The kitchen is at 123 Example Street.';
 add('unidentified_group_approver_needs_role', unknown, null);
+const identified = setup(2, 'Finalize this.', finalizeQuestion); identified.conversation.is_group = true;
+identified.conversation.participant_roles = { '+12025550101': 'homeowner' };
+add('identified_linq_customer_can_finalize', identified, 'finalization');
+const contractorDm = setup(2, 'I am the contractor. Finalize this for my client.', finalizeQuestion);
+add('contractor_dm_overrides_customer_default', contractorDm, null);
 const burst = setup(2, 'Yes, finalize it.', finalizeQuestion); append(burst, 'user', 'Wait, make the cabinets navy first.');
 add('later_burst_change_overrides_approval', burst, 'design');
 
