@@ -105,8 +105,10 @@ test('kitchen generation uses reference photos and the property address', async 
   let usedEdit = false;
   const client = {
     images: {
-      async edit(body: { prompt: string; image: unknown[] }) {
+      async edit(body: { prompt: string; image: unknown[] }, options: { timeout: number; maxRetries: number }) {
         usedEdit = true;
+        assert.equal(options.timeout, 180_000);
+        assert.equal(options.maxRetries, 0);
         assert.match(body.prompt, /123 Example Street/);
         assert.equal(body.image.length, 1);
         return { data: [{ b64_json: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64') }] };
@@ -149,7 +151,7 @@ test('live configuration requires both Linq credentials; sandbox does not', () =
   assert.equal(readConfig(env).MESSAGING_MODE, 'sandbox');
   assert.throws(() => readConfig({ ...env, MESSAGING_MODE: 'live' }));
   assert.equal(readConfig({ ...env, MESSAGING_MODE: 'live', LINQ_API_KEY: 'test', LINQ_WEBHOOK_SECRET: 'test' }).MESSAGING_MODE, 'live');
-  assert.equal(readConfig(env).OPENAI_IMAGE_MODEL, 'gpt-image-1.5');
+  assert.equal(readConfig(env).OPENAI_IMAGE_MODEL, 'gpt-image-2.5-sunburst');
 });
 
 test('transient upstream failures retry; authentication and bad requests stop for review', () => {
@@ -158,6 +160,18 @@ test('transient upstream failures retry; authentication and bad requests stop fo
   assert.equal(classifyError(new Error('network')).permanent, false);
   assert.equal(classifyError({ status: 401 }).permanent, true);
   assert.equal(classifyError({ status: 400 }).code, 'UPSTREAM_400');
+});
+
+test('image access and quota failures retain safe diagnostics and do not encourage automatic retries', () => {
+  const access = classifyError({ status: 403, code: 'model_not_found', requestID: 'req_test', message: 'private image request' }, 'image_generation');
+  assert.equal(access.code, 'IMAGE_GENERATION_UNAVAILABLE');
+  assert.equal(access.permanent, true);
+  assert.equal(access.providerCode, 'model_not_found');
+  assert.equal(access.requestId, 'req_test');
+  assert.ok(!JSON.stringify(access).includes('private image request'));
+  assert.equal(classifyError({ status: 429, code: 'insufficient_quota' }, 'image_generation').permanent, true);
+  assert.equal(classifyError({ status: 429, code: 'rate_limit_exceeded' }, 'image_generation').permanent, false);
+  assert.equal(classifyError({ status: 403 }, 'delivery').code, 'UPSTREAM_403');
 });
 
 test('Linq SDK sends into the existing chat with a stable body idempotency key', async () => {

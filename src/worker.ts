@@ -4,11 +4,20 @@ import { reactionTarget, validateDecision } from './domain.js';
 import { shouldGenerateKitchen, type DesignStudio } from './design.js';
 import { Store, type Turn } from './store.js';
 
-export function classifyError(error: unknown) {
+export function classifyError(error: unknown, stage?: string) {
   const status = error && typeof error === 'object' && 'status' in error ? Number(error.status) : undefined;
+  // Keep useful provider diagnostics without logging prompts, image URLs, or error bodies.
+  const field = (name: string) => {
+    const value = error && typeof error === 'object' ? (error as Record<string, unknown>)[name] : undefined;
+    return typeof value === 'string' && /^[\w.-]{1,200}$/.test(value) ? value : undefined;
+  };
+  const providerCode = field('code');
+  const imageUnavailable = stage === 'image_generation' && ([401, 403].includes(status ?? 0)
+    || providerCode === 'model_not_found' || providerCode === 'insufficient_quota' || providerCode === 'billing_hard_limit_reached');
   return {
-    code: status ? `UPSTREAM_${status}` : 'PROCESSING_FAILED',
-    permanent: !!status && status >= 400 && status < 500 && ![408,409,429].includes(status),
+    code: imageUnavailable ? 'IMAGE_GENERATION_UNAVAILABLE' : status ? `UPSTREAM_${status}` : 'PROCESSING_FAILED',
+    permanent: imageUnavailable || !!status && status >= 400 && status < 500 && ![408,409,429].includes(status),
+    status, providerCode, requestId: field('requestID') ?? field('request_id'), param: field('param'),
   };
 }
 
@@ -45,13 +54,16 @@ export class Worker {
     const claim = await this.store.claim();
     if (!claim) return false;
     const { turn } = claim;
+    let stage = 'agent';
     try {
       if (turn.status === 'failed') {
         if (await this.store.hasNewerCompletedTurn(turn)) { await this.store.finishFailureNotice(turn); return true; }
         try {
           await this.sendUpdate(turn, 'failure', turn.generated_attachments?.length
-            ? "Your design is saved, but I couldn’t finish sending it. Reply ‘try again’ to resend it, or ask for a person."
-            : "I couldn’t finish that request. Reply ‘try again’ to retry it, change the request, or ask for a person.");
+            ? "Your design is saved, but I couldn’t finish sending it. Reply ‘try again’ to resend it."
+            : turn.last_error === 'IMAGE_GENERATION_UNAVAILABLE'
+              ? "Image generation is temporarily unavailable. Your photos and request are saved."
+              : "I couldn’t finish that request. Reply ‘try again’ to retry it, or send an updated request.");
           await this.store.finishFailureNotice(turn);
         } catch {
           await this.store.finishFailureNotice(turn, true);
@@ -85,6 +97,7 @@ export class Worker {
           try { await this.sendUpdate(turn, 'progress', "I’m working on your kitchen design. I’ll share the image here when it’s ready."); }
           catch { this.logger.warn({ turnId: turn.id }, 'Progress update could not be sent'); }
           if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }
+          stage = 'image_generation';
           try { attachments = await this.design.generate(context, output); }
           catch (error) {
             if (!(error instanceof Error) || error.message !== 'REFERENCE_IMAGES_UNAVAILABLE') throw error;
@@ -98,6 +111,7 @@ export class Worker {
         }
       }
       let externalId: string | null = null;
+      stage = 'delivery';
       // A reaction or image generation may take time; honor a pause received while waiting.
       if (await this.cancelled(turn)) {
         await this.store.cancel(turn); return true;
@@ -109,9 +123,9 @@ export class Worker {
       await this.store.finish(turn, output, externalId, attachments);
       this.logger.info({ turnId: turn.id, conversationId: turn.conversation_id, handoff: output.handoff?.kind, images: attachments.length }, 'Turn completed');
     } catch (error) {
-      const failure = classifyError(error);
+      const failure = classifyError(error, stage);
       await this.store.fail(turn, failure.code, failure.permanent);
-      this.logger.error({ turnId: turn.id, attempt: turn.attempts, code: failure.code }, 'Turn failed');
+      this.logger.error({ turnId: turn.id, attempt: turn.attempts, stage, ...failure }, 'Turn failed');
     } finally { await this.store.release(claim); }
     return true;
   }

@@ -162,6 +162,7 @@ test('permanent failures are visible, notify the user, and do not block later re
   assert.equal(failed.body.turns[0].id, queued.turnId);
   await worker().tick();
   assert.match(sent[0]!.text, /couldn’t finish/);
+  assert.doesNotMatch(sent[0]!.text, /ask for a person/i);
   await store.ingest(incoming({ chatId: message.chatId }), 'linq');
   assert.equal(await worker().tick(), true);
   await store.pause(queued.conversationId!, true);
@@ -405,6 +406,28 @@ test('progress precedes rendering and failed delivery reuses the saved image and
   const ctx = await store.context(queued.conversationId!);
   assert.equal(ctx?.handoffs[0]?.status, 'completed');
   assert.deepEqual(ctx?.messages.at(-1)?.attachments, [render]);
+});
+
+test('image-model access failure preserves the request and reports unavailability without a retry loop or human offer', async () => {
+  const queued = await store.ingest(incoming(), 'linq');
+  const output = decision({ reply: 'Here is your kitchen.', handoff: { kind: 'design', summary: 'Render kitchen' },
+    brief: { ...decision().brief, propertyAddress: '123 Example St' } });
+  let renders = 0;
+  const runner = worker({ async respond() { return output; } }, messenger, { async generate() {
+    renders++;
+    throw Object.assign(new Error('Project does not have access to image model'), { status: 403, code: 'model_not_found' });
+  } });
+  await runner.tick();
+  const turn = await store.getTurn(queued.turnId!);
+  assert.equal(turn?.status, 'failed');
+  assert.equal(turn?.last_error, 'IMAGE_GENERATION_UNAVAILABLE');
+  assert.equal(turn?.decision?.brief.propertyAddress, '123 Example St');
+  await runner.tick();
+  assert.equal(await runner.tick(), false);
+  assert.equal(renders, 1);
+  assert.equal(sent.at(-1)?.text, 'Image generation is temporarily unavailable. Your photos and request are saved.');
+  assert.equal((await store.getConversation(queued.conversationId!))?.paused, false);
+  assert.equal((await store.context(queued.conversationId!))?.handoffs.length, 0);
 });
 
 test('one running worker serves a second chat while the first chat is rendering', async () => {

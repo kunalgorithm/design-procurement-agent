@@ -130,3 +130,30 @@ test('image generation distinguishes current kitchen, inspiration, and the lates
   } } };
   await new OpenAIDesignStudio(client as never, 'test', repository()).generate(ctx, output);
 });
+
+test('Sunburst sends a reference-image edit with JPEG output and no legacy input-fidelity parameter', async () => {
+  const ctx = context(); const photo = attachment();
+  ctx.messages = [{ id: randomUUID(), seq: '1', conversation_id: ctx.conversation.id, role: 'user', sender: 'homeowner',
+    text: 'Keep the room layout and use warm oak.', attachments: [photo], created_at: new Date() }];
+  const output = decision({ handoff: { kind: 'design', summary: 'Warm oak kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } });
+  let calls = 0;
+  const client = new OpenAI({ apiKey: 'test', maxRetries: 0, fetch: async (url, init) => {
+    if (String(url) === 'data:,') return new Response(''); // SDK checks native multipart support.
+    calls++;
+    assert.ok(String(url).endsWith('/images/edits'));
+    assert.ok(init?.body instanceof FormData);
+    const form = init.body;
+    assert.equal(form.get('model'), 'gpt-image-2.5-sunburst');
+    assert.equal(form.get('output_format'), 'jpeg');
+    assert.equal(form.get('size'), '1536x1024');
+    assert.equal(form.get('quality'), 'medium');
+    assert.equal(form.has('input_fidelity'), false);
+    const file = form.get('image[]') as File;
+    assert.equal(file.type, 'image/jpeg');
+    assert.deepEqual(Buffer.from(await file.arrayBuffer()), jpeg);
+    return new Response(JSON.stringify({ data: [{ b64_json: jpeg.toString('base64') }] }), { headers: { 'content-type': 'application/json' } });
+  } });
+  const images = await new OpenAIDesignStudio(client, 'gpt-image-2.5-sunburst', repository()).generate(ctx, output);
+  assert.equal(calls, 1);
+  assert.equal(images[0]?.mimeType, 'image/jpeg');
+});

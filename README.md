@@ -7,7 +7,7 @@ The editable conversation prompt lives in [`prompts/designer.md`](prompts/design
 ## What works
 
 - Signed Linq webhooks, sender-aware group conversations, and replies to the originating chat.
-- OpenAI Responses with structured decisions and image/PDF input. Default chat model: `gpt-5.6-terra`. Kitchen renders use the Images API (`OPENAI_IMAGE_MODEL`, default `gpt-image-1.5`).
+- OpenAI Responses with structured decisions and image/PDF input. Default chat model: `gpt-5.6-terra`. Kitchen renders use the Images API (`OPENAI_IMAGE_MODEL`, default `gpt-image-2.5-sunburst`).
 - PostgreSQL conversation history, project briefs, handoffs, and durable queued replies.
 - Debouncing, duplicate-event protection, per-chat serialization, retries, and stable Linq send idempotency keys.
 - Human takeover, pause/resume, explicit STOP handling, operator messages, and failed-turn inspection.
@@ -18,7 +18,7 @@ The editable conversation prompt lives in [`prompts/designer.md`](prompts/design
 
 A `design` handoff sends a brief progress message, generates a kitchen image from the conversation photos and notes, and attaches it to FORM's reply in both the sandbox and live Linq chats. Generated images are stored in PostgreSQL so delivery retries and later revisions can reuse them after a restart. Proposal and procurement handoffs still create database records for an operator. This backend does not fetch live catalog prices, produce binding proposals, buy materials, notify an external team, or place calls.
 
-FORM asks one useful question at a time, distinguishes the existing kitchen from inspiration, and uses the latest design as the baseline for revisions. Ordinary negative design feedback prompts a revision; explicit requests for a person and serious unresolved service problems can trigger human takeover. Proposal and procurement requests collect their missing required details one at a time.
+FORM asks one useful question at a time, distinguishes the existing kitchen from inspiration, and uses the latest design as the baseline for revisions. Ordinary negative design feedback prompts a revision. FORM never offers human support; only an explicit customer request for a person triggers human takeover. Proposal and procurement requests collect their missing required details one at a time.
 
 ## Run locally
 
@@ -52,8 +52,8 @@ npm run chat
 [Deploy with the Render Blueprint](https://render.com/deploy?repo=https://github.com/kunalgorithm/design-procurement-agent)
 
 1. Connect the GitHub repository and create a Blueprint from `render.yaml`. It provisions a Node web service and PostgreSQL database on **paid plans**; review the plans in Render before creating them.
-2. Supply `OPENAI_API_KEY`. Render supplies `DATABASE_URL` and generates `ADMIN_API_KEY`. The application initially defaults to sandbox mode, so you can test it before connecting a real messaging line.
-3. Confirm `/healthz` and `/readyz` return 200. Open `/sandbox` on the Render service and sign in with the generated `ADMIN_API_KEY` from the service's environment settings. This is the same sandbox as local: homeowner/contractor roles, photos, and admin controls, with no Linq delivery. Uploaded sandbox photos live on the instance disk and do not survive deploys or restarts.
+2. Supply `OPENAI_API_KEY`. Its OpenAI project must allow both `OPENAI_MODEL` and `OPENAI_IMAGE_MODEL` (defaults: `gpt-5.6-terra` and `gpt-image-2.5-sunburst`). Check the project's **Limits → Model usage → Allowed models** settings: successful text replies do not prove image-model access. Render supplies `DATABASE_URL` and generates `ADMIN_API_KEY`. The application initially defaults to sandbox mode, so you can test it before connecting a real messaging line.
+3. Confirm `/healthz` and `/readyz` return 200, then verify a real image generation; health checks only check the service and database. Open `/sandbox` on the Render service and sign in with the generated `ADMIN_API_KEY` from the service's environment settings. Send a property address and a kitchen photo, and confirm a generated image appears. This is the same sandbox as local: homeowner/contractor roles, photos, and admin controls, with no Linq delivery. Uploaded sandbox photos live on the instance disk and do not survive deploys or restarts.
 4. The same admin token works for `npm run chat` and the operator `/api` routes. Keep the token private; anyone who has it can talk to the model and inspect conversations.
 5. Enable Linq as described below. Keep the service at one instance initially; the database queue supports safe per-chat locking during rolling deployments. The web sandbox stays available after you switch to live mode and remains isolated from real chats.
 
@@ -168,6 +168,8 @@ The request handler verifies the raw webhook signature and persists the inbound 
 Outbound echoes, unrelated events, empty messages, and delayed historical events marked `reconciled_at` are ignored. This version does not import historical chats. Rich link previews are kept as text URLs; their webpages are not fetched.
 
 The decision and generated image are saved **before** final delivery. Linq media is pre-uploaded, its attachment ID is saved, and the turn UUID is reused as `message.idempotency_key`. An ambiguous send can therefore retry the same text and image without another model or image-generation call. Progress and failure notices have their own stable send keys. This relies on Linq's idempotency semantics; API acceptance is not confirmation of handset delivery. An abandoned processing lease becomes recoverable after four minutes. Retries back off and stop after five attempts; most upstream 4xx errors fail immediately. A failed image-generation call retries the saved decision without asking the chat model again.
+
+Image generation has a three-minute request timeout. Image-model access/authentication and exhausted-quota errors stop with `IMAGE_GENERATION_UNAVAILABLE`, preserve the request, and explain that generation is unavailable without encouraging a futile retry. Restore model access or quota before retrying. Failure logs include the processing stage, HTTP status, provider error code, and request ID when available, without logging prompts, image URLs, or raw error bodies.
 
 Inspect `/api/turns?status=failed` and `/api/handoffs` regularly. A terminally failed turn attempts a short recovery message (up to three delivery attempts) and allows later requests to proceed. Replying `try again`, `retry`, or `resend` retries the latest failed request with its saved decision, image, and final-message key. Requests containing new instructions or attachments start a new turn. Obsolete failure notices are suppressed after a newer agent turn completes, and an old failed turn cannot be retried after newer work has started or completed. To take over, pause the conversation and queue an operator message. STOP cancels outstanding automatic turns and pauses the conversation. A pause cannot recall a send Linq has already accepted. The sandbox web UI is the local/Render operator surface for this; it does not replace a customer-facing product.
 

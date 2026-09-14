@@ -8,7 +8,7 @@ const schema = z.object({
   ADMIN_API_KEY: z.string().min(32),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().default('gpt-5.6-terra'),
-  OPENAI_IMAGE_MODEL: z.string().default('gpt-image-1.5'),
+  OPENAI_IMAGE_MODEL: z.string().default('gpt-image-2.5-sunburst'),
   MESSAGING_MODE: z.enum(['sandbox', 'live']).default('sandbox'),
   LINQ_API_KEY: z.string().default(''),
   LINQ_FROM_NUMBER: z.string().regex(/^\+[1-9]\d{7,14}$/).or(z.literal('')).default(''),

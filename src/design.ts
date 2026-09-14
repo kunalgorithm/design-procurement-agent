@@ -90,11 +90,13 @@ export class OpenAIDesignStudio implements DesignStudio {
     }
     if (!references.length) throw Object.assign(new Error('REFERENCE_IMAGES_UNAVAILABLE'), { status: 422, code: 'REFERENCE_IMAGES_UNAVAILABLE' });
     prompt += `\n\nReference order:\n${descriptions.join('\n')}\nUse current-kitchen photos and floor plans for architecture. Use inspiration only for finishes and style. On revisions preserve the latest design except for requested changes. If no current-kitchen photo or plan is provided, this is a concept, not a verified recreation of the property.`;
-    const options = { timeout: 90_000, maxRetries: 0 as const };
+    const options = { timeout: 180_000, maxRetries: 0 as const };
     const result = await this.client.images.edit({
       image: await Promise.all(references.map((file, index) => toFile(file.bytes, file.filename || `reference-${index}.jpg`, { type: file.mimeType }))),
       prompt, model: this.model, n: 1, size: '1536x1024', quality: 'medium',
-      output_format: 'jpeg', input_fidelity: 'high',
+      output_format: 'jpeg',
+      ...(['gpt-image-1', 'gpt-image-1.5'].includes(this.model) || this.model.startsWith('gpt-image-1.5-')
+        ? { input_fidelity: 'high' as const } : {}),
     }, options);
     const encoded = result.data?.[0]?.b64_json;
     if (!encoded) throw Object.assign(new Error('IMAGE_GENERATION_EMPTY'), { status: 502 });
