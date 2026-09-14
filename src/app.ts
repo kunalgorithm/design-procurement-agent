@@ -8,6 +8,7 @@ import type { Config } from './config.js';
 import { createLinq, normalizeEvent } from './linq.js';
 import { BadMediaError, readSandboxMedia, saveSandboxUploads } from './media.js';
 import type { Store } from './store.js';
+import { normalizePhoneNumber } from './chat-commands.js';
 
 const publicDir = fileURLToPath(new URL('../public', import.meta.url));
 const sandboxMessageSchema = z.object({
@@ -59,6 +60,7 @@ export function createApp(config: Config, store: Store) {
 
   const linq = createLinq(config.LINQ_API_KEY || 'sandbox-disabled', config.LINQ_WEBHOOK_SECRET);
   const allowedHandles = new Set(config.LINQ_ALLOWED_HANDLES.split(',').map((value) => value.trim()).filter(Boolean));
+  const adminNumbers = new Set(config.LINQ_ADMIN_NUMBERS);
   app.post('/webhooks/linq', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
     if (config.MESSAGING_MODE !== 'live') { res.status(503).json({ error: 'Live webhooks are disabled in sandbox mode' }); return; }
     if (!Buffer.isBuffer(req.body)) { res.status(415).json({ error: 'Expected application/json' }); return; }
@@ -74,7 +76,7 @@ export function createApp(config: Config, store: Store) {
       res.status(200).json({ ignored: true }); return;
     }
     // Commit first; the worker handles all model calls and outbound delivery later.
-    res.status(200).json(await store.ingest(message, 'linq'));
+    res.status(200).json(await store.ingest(message, 'linq', adminNumbers.has(normalizePhoneNumber(message.sender) ?? '')));
   });
 
   app.get('/config', (_req, res) => {
@@ -104,16 +106,19 @@ export function createApp(config: Config, store: Store) {
   api.use(express.json({ limit: '64kb' }));
   api.get('/media/:id', async (req, res) => {
     const id = z.string().uuid().parse(req.params.id);
-    const file = await readSandboxMedia(id);
+    const file = await store.readMedia(id) || await readSandboxMedia(id);
     if (!file) { res.status(404).json({ error: 'Not found' }); return; }
     res.set('Content-Type', file.mimeType);
     res.set('Cache-Control', 'private, max-age=3600');
     res.send(file.bytes);
   });
-  api.get('/conversations', async (_req, res) => res.json({ conversations: await store.listConversations() }));
+  api.get('/conversations', async (req, res) => {
+    const archived = z.enum(['true','false']).optional().parse(req.query.archived) === 'true';
+    res.json({ conversations: await store.listConversations(archived) });
+  });
   api.get('/conversations/:id', async (req, res) => {
     const id = z.string().uuid().parse(req.params.id);
-    const context = await store.context(id);
+    const context = await store.context(id, undefined, true);
     if (!context) { res.status(404).json({ error: 'Conversation not found' }); return; }
     res.json({ ...context, failedTurns: await store.listConversationTurns(id, 'failed') });
   });

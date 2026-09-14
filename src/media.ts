@@ -5,6 +5,17 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Attachment } from './domain.js';
 
+export interface MediaFile { bytes: Buffer; mimeType: string; filename: string }
+export interface MediaRepository {
+  readMedia(id: string): Promise<MediaFile | null>;
+  saveMedia(conversationId: string, attachment: Attachment, bytes: Buffer): Promise<void>;
+  providerAttachment(id: string): Promise<string | null>;
+  saveProviderAttachment(id: string, providerId: string): Promise<void>;
+}
+export async function readProjectMedia(id: string, repository?: MediaRepository) {
+  return await repository?.readMedia(id) || await readSandboxMedia(id);
+}
+
 export class BadMediaError extends Error {}
 
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
