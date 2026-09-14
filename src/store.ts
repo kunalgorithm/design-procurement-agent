@@ -274,13 +274,28 @@ export class Store {
       AND t.kind='agent' AND t.status='processing' AND t.reaction_attempted_at IS NULL RETURNING t.id`, [id]);
     return !!result.rowCount;
   }
+  private async hasNewerUserMessage(client: pg.PoolClient, turn: Turn) {
+    return (await client.query(`SELECT 1 FROM messages WHERE conversation_id=$1 AND role='user' AND NOT is_control AND seq>$2 LIMIT 1`,
+      [turn.conversation_id,turn.through_seq])).rowCount! > 0;
+  }
+  async deferFinalization(turn: Turn) {
+    return transaction(this.pool, async (client) => {
+      await client.query('SELECT id FROM conversations WHERE id=$1 FOR UPDATE', [turn.conversation_id]);
+      if (!await this.hasNewerUserMessage(client, turn)) return false;
+      // Ingest already queued the new burst. Let that turn evaluate approval and the new feedback together.
+      await client.query("UPDATE turns SET status='cancelled',completed_at=now(),lease_until=NULL WHERE id=$1 AND status='processing'", [turn.id]);
+      return true;
+    });
+  }
   async finish(turn: Turn, decision: Decision, externalId: string | null, attachments: Attachment[] = []) {
     await transaction(this.pool, async (client) => {
       // Match ingest/pause lock order so STOP cannot deadlock against completion.
       await client.query('SELECT id FROM conversations WHERE id=$1 FOR UPDATE', [turn.conversation_id]);
       const current = (await client.query<Turn>('SELECT * FROM turns WHERE id=$1 FOR UPDATE', [turn.id])).rows[0]!;
       if (current.status === 'done') return;
-      if (current.status === 'cancelled') {
+      const supersededApproval = decision.handoff?.kind === 'finalization' && await this.hasNewerUserMessage(client, turn);
+      if (supersededApproval) await client.query("UPDATE turns SET status='cancelled',completed_at=now(),lease_until=NULL WHERE id=$1", [turn.id]);
+      if (current.status === 'cancelled' || supersededApproval) {
         // A pause cannot recall a send already accepted by Linq. Keep its audit trail.
         if (externalId && decision.reply) await client.query(`INSERT INTO messages(id,conversation_id,external_id,role,sender,text,attachments,is_control)
           VALUES($1,$2,$3,'assistant','FORM',$4,$5,$6) ON CONFLICT(id) DO NOTHING`,
@@ -301,7 +316,7 @@ export class Store {
             [turn.conversation_id,JSON.stringify([{ id: decision.approval.designAttachmentId }])])).rows[0];
           const design = designMessage?.attachments.find((file) => file.id === decision.approval!.designAttachmentId);
           if (!customer || !design) throw new Error('DESIGN_APPROVAL_REFERENCE_MISSING');
-          approval = { design, customerMessageId: customer.id, customerSender: customer.sender, customerText: customer.text, approvedAt: customer.created_at.toISOString(), brief: decision.brief };
+          approval = { design, customerMessageId: customer.id, customerSender: customer.sender, customerText: customer.text, approvedAt: (customer.provider_sent_at ?? customer.created_at).toISOString(), brief: decision.brief };
         }
         await client.query(`INSERT INTO handoffs(conversation_id,turn_id,kind,summary,design_approval) VALUES($1,$2,$3,$4,$5)
           ON CONFLICT DO NOTHING`, [turn.conversation_id, turn.id, decision.handoff.kind, decision.handoff.summary, approval ? JSON.stringify(approval) : null]);

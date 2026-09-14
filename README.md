@@ -215,6 +215,8 @@ Prefer a dedicated database for integration tests. Each run creates and drops it
 
 For an opt-in dialogue check with the configured OpenAI model, run `node --import tsx --env-file-if-exists=.env scripts/eval-design-dialogue.ts`. This makes paid model requests using synthetic conversations and the public sample kitchen; it never sends Linq messages, generates images, or writes application data. It checks first versus later presentation, casual praise, explicit and conditional approval, requests for time, post-finalization thanks, and group participant roles. Review the printed replies for warmth, grounded acknowledgments, and restrained humor as well as the behavioral assertions. Live image delivery still needs its separate configured-account smoke test.
 
+A newer customer message arriving while finalization is being processed defers approval to the next turn. The worker checks again when saving the handoff, so a message arriving during delivery cannot leave stale contractor work active. As with STOP, a text already accepted by Linq cannot be recalled; its audit message is retained while the later feedback is processed.
+
 ## API references
 
 - [Linq iMessage API](https://docs.linqapp.com/channel/imessage/api/)

@@ -69,6 +69,7 @@ export interface Conversation {
 export interface Message {
   id: string; seq: string; conversation_id: string;
   external_id?: string | null; service?: string | null;
+  provider_sent_at?: Date | null;
   role: 'user' | 'assistant' | 'operator'; sender: string;
   text: string; attachments: Attachment[]; created_at: Date;
 }

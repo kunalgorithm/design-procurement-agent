@@ -118,6 +118,7 @@ export class Worker {
       if (await this.cancelled(turn)) {
         await this.store.cancel(turn); return true;
       }
+      if (output.handoff?.kind === 'finalization' && await this.store.deferFinalization(turn)) return true;
       if ((output.reply || attachments.length) && context.conversation.channel === 'linq') {
         if (this.mode !== 'live') throw Object.assign(new Error('LIVE_SEND_DISABLED'), { status: 403 });
         externalId = await this.messenger.send(context.conversation.external_id, output.reply ?? '', turn.id, attachments);

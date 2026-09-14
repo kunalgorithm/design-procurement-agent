@@ -58,7 +58,10 @@ test('migrations are repeatable', async () => {
 test('finalization saves the exact image, customer evidence and choices once across a delivery retry', async () => {
   const { chatId, conversationId, render } = await deliveredDesign();
   assert.match(sent.at(-1)!.text, /What do you think/);
-  const approved = await store.ingest(incoming({ chatId, isGroup: false, text: 'This is the one. Finalize it.' }), 'linq');
+  // Simulate a delayed approval webhook for a design delivered an hour earlier.
+  await pool.query("UPDATE messages SET created_at=now()-interval '1 hour' WHERE conversation_id=$1 AND role='assistant'", [conversationId]);
+  const sentAt = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+  const approved = await store.ingest(incoming({ chatId, isGroup: false, text: 'This is the one. Finalize it.', sentAt }), 'linq');
   await worker(finalizeAgent, { async send() { throw new Error('connection lost'); } }).tick();
   assert.equal((await store.listHandoffs()).length, 0);
   await readyAgain(approved.turnId!);
@@ -67,6 +70,7 @@ test('finalization saves the exact image, customer evidence and choices once acr
   assert.equal(task.kind, 'finalization');
   assert.deepEqual(task.design_approval.design, render);
   assert.equal(task.design_approval.customerText, 'This is the one. Finalize it.');
+  assert.equal(task.design_approval.approvedAt, sentAt);
   assert.deepEqual(task.design_approval.brief.materials, ['Dark cabinets', 'Existing backsplash']);
   assert.equal(task.design_approval.brief.contractorName, null);
   assert.equal((await store.getConversation(conversationId))?.paused, false);
@@ -81,6 +85,27 @@ test('finalization saves the exact image, customer evidence and choices once acr
   await store.ingest(incoming({ chatId, isGroup: false, text: 'Finalize it.' }), 'linq');
   await worker(finalizeAgent).tick();
   assert.equal((await pool.query("SELECT count(*) FROM handoffs WHERE kind='finalization'")).rows[0].count, '1');
+});
+
+for (const stage of ['model', 'delivery'] as const) test(`a late revision during ${stage} prevents a stale contractor handoff even if the next model request fails`, async () => {
+  const { chatId, conversationId } = await deliveredDesign();
+  const queued = await store.ingest(incoming({ chatId, isGroup: false, text: 'Finalize this.' }), 'linq');
+  const messagesBefore = sent.length;
+  const retract = () => store.ingest(incoming({ chatId, isGroup: false, text: 'Wait, make the cabinets white.' }), 'linq');
+  await worker({ async respond(ctx) {
+    if (stage === 'model') await retract();
+    return finalizeAgent.respond(ctx);
+  } }, { async send(chat, text, key) {
+    if (stage === 'delivery') await retract();
+    return messenger.send(chat, text, key);
+  } }).tick();
+  assert.equal((await store.getTurn(queued.turnId!))?.status, 'cancelled');
+  assert.equal((await store.listHandoffs()).length, 0);
+  assert.equal(sent.length - messagesBefore, stage === 'model' ? 0 : 1);
+  assert.equal((await store.context(conversationId))?.finalizedDesign, null);
+  await worker({ async respond() { throw new Error('model temporarily unavailable'); } }).tick();
+  assert.equal((await store.listHandoffs()).length, 0);
+  assert.equal((await pool.query("SELECT count(*) FROM handoffs WHERE kind='finalization'")).rows[0].count, '0');
 });
 
 test('a revision withdraws prior finalization before generation and requires approval of the new image', async () => {
