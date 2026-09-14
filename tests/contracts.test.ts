@@ -247,9 +247,11 @@ test('OpenAI request uses strict structured output, sender context, and actual i
     assert.equal(body.text.format.type, 'json_schema');
     assert.equal(body.text.format.strict, true);
     assert.ok(body.text.format.schema.required.includes('reaction'));
+    assert.ok(body.text.format.schema.required.includes('approval'));
     assert.equal(body.input[2].content.find((part: { type: string }) => part.type === 'input_image').type, 'input_image');
     assert.match(body.input[2].content[0].text, /12025550101/);
     assert.match(body.input[2].content[0].text, /"role":null/);
+    assert.equal(JSON.parse(body.input[2].content[0].text).messageId, ctx.messages[0]!.id);
     return new Response(JSON.stringify({ id: 'resp_test', object: 'response', status: 'completed', output: [{ id: 'msg_test', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: JSON.stringify(expected), annotations: [] }] }] }), { headers: { 'content-type': 'application/json' } });
   } });
   assert.deepEqual(await new OpenAIAgent(client, 'gpt-5-mini').respond(ctx), expected);

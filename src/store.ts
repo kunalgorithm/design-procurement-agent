@@ -4,7 +4,7 @@ import type { z } from 'zod';
 import type { contractorSignupSchema } from './contractor-schema.js';
 import { transaction } from './db.js';
 import { parseChatCommand, type ChatCommand } from './chat-commands.js';
-import { emptyBrief, isStopRequest, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext, type Attachment } from './domain.js';
+import { emptyBrief, isStopRequest, selfIdentifiedRole, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext, type Attachment } from './domain.js';
 
 export interface Turn {
   id: string; conversation_id: string; kind: 'agent' | 'operator' | 'control';
@@ -68,6 +68,8 @@ export class Store {
       [conversation.id, `${channel}:${message.messageId}`, message.sender, message.text, JSON.stringify(message.attachments), message.sentAt, message.service, !!command]);
       if (!inserted.rowCount) return this.duplicateReceipt(client, message, channel);
       if (command) return this.handleCommand(client, conversation, inserted.rows[0]!, command, adminAuthorized);
+      const role = selfIdentifiedRole(message.text);
+      if (role) await client.query('UPDATE conversations SET participant_roles=participant_roles || jsonb_build_object($2::text,$3::text) WHERE id=$1', [conversation.id,message.sender,role]);
       if (isStopRequest(message.text)) {
         await client.query('UPDATE conversations SET paused=true WHERE id=$1', [conversation.id]);
         await client.query("UPDATE turns SET status='cancelled',completed_at=now() WHERE conversation_id=$1 AND kind='agent' AND status IN ('pending','processing','failed')", [conversation.id]);
@@ -145,7 +147,10 @@ export class Store {
       (SELECT * FROM messages WHERE conversation_id=$1 AND role='assistant' AND NOT is_control AND jsonb_array_length(attachments)>0
         ORDER BY seq DESC LIMIT 1)
     ) refs ORDER BY seq`, [id, throughSeq ?? null]);
-    return { conversation, messages: messages.rows, handoffs: handoffs.rows, referenceMessages: references.rows, hasAssistantReply: replied.rows[0]!.exists };
+    const designCount = (await this.pool.query<{ count: number }>("SELECT count(*)::int AS count FROM messages WHERE conversation_id=$1 AND role='assistant' AND NOT is_control AND jsonb_array_length(attachments)>0", [id])).rows[0]!.count;
+    // Keep the outcome available even after its message/task leaves the recent-history window.
+    const finalizedDesign = (await this.pool.query<Handoff>("SELECT * FROM handoffs WHERE conversation_id=$1 AND kind='finalization' AND status!='superseded' ORDER BY created_at DESC LIMIT 1", [id])).rows[0] ?? null;
+    return { conversation, messages: messages.rows, handoffs: handoffs.rows, referenceMessages: references.rows, hasAssistantReply: replied.rows[0]!.exists, designCount, finalizedDesign };
   }
   async pause(id: string, paused: boolean) {
     return transaction(this.pool, async (client) => {
@@ -178,7 +183,7 @@ export class Store {
       await client.query('DELETE FROM handoffs WHERE conversation_id=$1', [id]);
       await client.query('DELETE FROM turns WHERE conversation_id=$1', [id]);
       await client.query('DELETE FROM messages WHERE conversation_id=$1', [id]);
-      return (await client.query<Conversation>('UPDATE conversations SET brief=$2,paused=false,updated_at=now() WHERE id=$1 RETURNING *',
+      return (await client.query<Conversation>("UPDATE conversations SET brief=$2,participant_roles='{}'::jsonb,paused=false,updated_at=now() WHERE id=$1 RETURNING *",
         [id, JSON.stringify(emptyBrief())])).rows[0];
     });
   }
@@ -197,7 +202,7 @@ export class Store {
   }
   async listHandoffs() { return (await this.pool.query("SELECT h.* FROM handoffs h JOIN conversations c ON c.id=h.conversation_id WHERE h.status='open' AND c.archived_at IS NULL ORDER BY h.created_at LIMIT 100")).rows; }
   async completeHandoff(id: string) {
-    return (await this.pool.query("UPDATE handoffs SET status='completed',completed_at=now() WHERE id=$1 RETURNING *", [id])).rows[0];
+    return (await this.pool.query("UPDATE handoffs SET status='completed',completed_at=COALESCE(completed_at,now()) WHERE id=$1 AND status!='superseded' RETURNING *", [id])).rows[0];
   }
 
   async claim(): Promise<ClaimedTurn | null> {
@@ -232,7 +237,13 @@ export class Store {
     } catch { claim.client.release(true); }
   }
   async saveDecision(id: string, decision: Decision) {
-    await this.pool.query("UPDATE turns SET decision=$2 WHERE id=$1 AND status='processing'", [id, JSON.stringify(decision)]);
+    await transaction(this.pool, async (client) => {
+      const saved = (await client.query<Turn>("UPDATE turns SET decision=$2 WHERE id=$1 AND status='processing' RETURNING *", [id, JSON.stringify(decision)])).rows[0];
+      if (saved && decision.handoff?.kind === 'design') {
+        // Reopening a design withdraws the old contractor task before generation, including when rendering fails.
+        await client.query("UPDATE handoffs SET status='superseded' WHERE conversation_id=$1 AND kind='finalization' AND status!='superseded'", [saved.conversation_id]);
+      }
+    });
   }
   async saveGeneratedAttachments(id: string, attachments: Attachment[]) {
     await this.pool.query("UPDATE turns SET generated_attachments=$2 WHERE id=$1 AND status='processing'", [id, JSON.stringify(attachments)]);
@@ -263,13 +274,28 @@ export class Store {
       AND t.kind='agent' AND t.status='processing' AND t.reaction_attempted_at IS NULL RETURNING t.id`, [id]);
     return !!result.rowCount;
   }
+  private async hasNewerUserMessage(client: pg.PoolClient, turn: Turn) {
+    return (await client.query(`SELECT 1 FROM messages WHERE conversation_id=$1 AND role='user' AND NOT is_control AND seq>$2 LIMIT 1`,
+      [turn.conversation_id,turn.through_seq])).rowCount! > 0;
+  }
+  async deferFinalization(turn: Turn) {
+    return transaction(this.pool, async (client) => {
+      await client.query('SELECT id FROM conversations WHERE id=$1 FOR UPDATE', [turn.conversation_id]);
+      if (!await this.hasNewerUserMessage(client, turn)) return false;
+      // Ingest already queued the new burst. Let that turn evaluate approval and the new feedback together.
+      await client.query("UPDATE turns SET status='cancelled',completed_at=now(),lease_until=NULL WHERE id=$1 AND status='processing'", [turn.id]);
+      return true;
+    });
+  }
   async finish(turn: Turn, decision: Decision, externalId: string | null, attachments: Attachment[] = []) {
     await transaction(this.pool, async (client) => {
       // Match ingest/pause lock order so STOP cannot deadlock against completion.
       await client.query('SELECT id FROM conversations WHERE id=$1 FOR UPDATE', [turn.conversation_id]);
       const current = (await client.query<Turn>('SELECT * FROM turns WHERE id=$1 FOR UPDATE', [turn.id])).rows[0]!;
       if (current.status === 'done') return;
-      if (current.status === 'cancelled') {
+      const supersededApproval = decision.handoff?.kind === 'finalization' && await this.hasNewerUserMessage(client, turn);
+      if (supersededApproval) await client.query("UPDATE turns SET status='cancelled',completed_at=now(),lease_until=NULL WHERE id=$1", [turn.id]);
+      if (current.status === 'cancelled' || supersededApproval) {
         // A pause cannot recall a send already accepted by Linq. Keep its audit trail.
         if (externalId && decision.reply) await client.query(`INSERT INTO messages(id,conversation_id,external_id,role,sender,text,attachments,is_control)
           VALUES($1,$2,$3,'assistant','FORM',$4,$5,$6) ON CONFLICT(id) DO NOTHING`,
@@ -283,8 +309,17 @@ export class Store {
         VALUES($1,$2,$3,$4,'FORM',$5,$6,$7) ON CONFLICT(id) DO NOTHING`,
       [turn.id, turn.conversation_id, externalId ? `outbound:${externalId}` : null, turn.kind === 'operator' ? 'operator' : 'assistant', decision.reply ?? '', JSON.stringify(attachments),turn.kind === 'control']);
       if (decision.handoff) {
-        await client.query(`INSERT INTO handoffs(conversation_id,turn_id,kind,summary) VALUES($1,$2,$3,$4)
-          ON CONFLICT DO NOTHING`, [turn.conversation_id, turn.id, decision.handoff.kind, decision.handoff.summary]);
+        let approval: Handoff['design_approval'] = null;
+        if (decision.handoff.kind === 'finalization' && decision.approval) {
+          const customer = (await client.query<Message>("SELECT * FROM messages WHERE id=$1 AND conversation_id=$2 AND role='user'", [decision.approval.customerMessageId,turn.conversation_id])).rows[0];
+          const designMessage = (await client.query<Message>(`SELECT * FROM messages WHERE conversation_id=$1 AND role='assistant' AND attachments @> $2::jsonb ORDER BY seq DESC LIMIT 1`,
+            [turn.conversation_id,JSON.stringify([{ id: decision.approval.designAttachmentId }])])).rows[0];
+          const design = designMessage?.attachments.find((file) => file.id === decision.approval!.designAttachmentId);
+          if (!customer || !design) throw new Error('DESIGN_APPROVAL_REFERENCE_MISSING');
+          approval = { design, customerMessageId: customer.id, customerSender: customer.sender, customerText: customer.text, approvedAt: (customer.provider_sent_at ?? customer.created_at).toISOString(), brief: decision.brief };
+        }
+        await client.query(`INSERT INTO handoffs(conversation_id,turn_id,kind,summary,design_approval) VALUES($1,$2,$3,$4,$5)
+          ON CONFLICT DO NOTHING`, [turn.conversation_id, turn.id, decision.handoff.kind, decision.handoff.summary, approval ? JSON.stringify(approval) : null]);
         if (decision.handoff.kind === 'design' && attachments.length) {
           await client.query(`UPDATE handoffs SET status='completed',completed_at=now()
             WHERE conversation_id=$1 AND turn_id=$2 AND kind='design' AND status='open'`, [turn.conversation_id, turn.id]);
