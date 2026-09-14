@@ -14,7 +14,8 @@ const bytes = await readFile(new URL('../public/kitchen-sample.jpg', import.meta
 const sample: Attachment = { id: 'sample-kitchen', url: `data:image/jpeg;base64,${bytes.toString('base64')}`, mimeType: 'image/jpeg', filename: 'kitchen.jpg', sizeBytes: bytes.length };
 
 function append(ctx: AgentContext, role: Message['role'], text: string, sender = role === 'assistant' ? 'FORM' : '+12025550101', attachments: Attachment[] = []) {
-  ctx.messages.push({ id: randomUUID(), conversation_id: ctx.conversation.id, seq: String(ctx.messages.length + 1), role, sender, text, attachments, created_at: new Date() });
+  ctx.messages.push({ id: randomUUID(), conversation_id: ctx.conversation.id, seq: String(ctx.messages.length + 1), role, sender, text, attachments, created_at: new Date(),
+    service: 'iMessage', external_id: role === 'user' ? `linq:${randomUUID()}` : null });
 }
 function setup(count: number, text: string, question = 'What do you think? Let me know if you would like any changes.') {
   const ctx: AgentContext = { conversation: { id: randomUUID(), external_id: randomUUID(), channel: 'linq', is_group: false,
@@ -74,7 +75,7 @@ for (let i = 0; i < cases.length; i += 2) {
       assert.doesNotMatch(result.reply ?? '', /ask for a person|human support|human agent/i);
       assert.ok((result.reply ?? '').split(/\s+/).length <= 95);
       scenario.check?.(result);
-      console.log(JSON.stringify({ scenario: scenario.name, pass: true, reply: result.reply, handoff: result.handoff?.kind ?? null }));
+      console.log(JSON.stringify({ scenario: scenario.name, pass: true, reply: result.reply, reaction: result.reaction, handoff: result.handoff?.kind ?? null }));
     } catch (error) {
       failures++;
       console.log(JSON.stringify({ scenario: scenario.name, pass: false, reply: result?.reply, handoff: result?.handoff?.kind ?? null,
