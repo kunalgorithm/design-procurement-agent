@@ -9,7 +9,7 @@ import { Store } from '../../src/store.js';
 import { Worker } from '../../src/worker.js';
 import { createApp } from '../../src/app.js';
 import { readConfig } from '../../src/config.js';
-import { type Agent, type AgentContext, type Attachment, type Messenger } from '../../src/domain.js';
+import { designReview, type Agent, type AgentContext, type Attachment, type Messenger } from '../../src/domain.js';
 import { type DesignStudio } from '../../src/design.js';
 import { writeSandboxMedia } from '../../src/media.js';
 import { incoming, decision, event, sign, webhookSecret } from '../fixtures.js';
@@ -30,13 +30,102 @@ const agent: Agent = { async respond() { return decision(); } };
 const worker = (model = agent, transport = messenger, design?: DesignStudio) => new Worker(store, model, transport, logger, 100, 'live', design);
 const readyAgain = (id: string) => pool.query("UPDATE turns SET lease_until=now()-interval '1 second',available_at=now() WHERE id=$1", [id]);
 
+const finalizeAgent: Agent = { async respond(ctx) {
+  return decision({ reply: 'Your design is finalized. Your choices are saved for your contractor.', brief: ctx.conversation.brief,
+    handoff: { kind: 'finalization', summary: 'Customer approved dark cabinets and the existing backsplash.' },
+    approval: { designAttachmentId: designReview(ctx).attachment!.id, customerMessageId: ctx.messages.findLast((message) => message.role === 'user')!.id } });
+} };
+async function deliveredDesign() {
+  const chatId = randomUUID();
+  const queued = await store.ingest(incoming({ chatId, isGroup: false, text: '123 Example St. Dark cabinets, keep the backsplash.' }), 'linq');
+  const id = randomUUID();
+  const render: Attachment = { id, url: `/api/media/${id}`, mimeType: 'image/jpeg', filename: 'kitchen-design.jpg', sizeBytes: 4 };
+  await worker({ async respond() { return decision({ reply: null,
+    brief: { ...decision().brief, propertyAddress: '123 Example St', materials: ['Dark cabinets', 'Existing backsplash'] },
+    handoff: { kind: 'design', summary: 'First design' } }); } }, messenger, { async generate() { return [render]; } }).tick();
+  return { chatId, conversationId: queued.conversationId!, render };
+}
+
 before(async () => { await admin.query(`CREATE SCHEMA ${schema}`); await migrate(pool); });
 beforeEach(async () => { await pool.query('TRUNCATE conversations,webhook_events CASCADE'); sent.length = 0; });
 after(async () => { await pool.end(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); });
 
 test('migrations are repeatable', async () => {
   await migrate(pool);
-  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '5');
+  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '6');
+});
+
+test('finalization saves the exact image, customer evidence and choices once across a delivery retry', async () => {
+  const { chatId, conversationId, render } = await deliveredDesign();
+  assert.match(sent.at(-1)!.text, /What do you think/);
+  const approved = await store.ingest(incoming({ chatId, isGroup: false, text: 'This is the one. Finalize it.' }), 'linq');
+  await worker(finalizeAgent, { async send() { throw new Error('connection lost'); } }).tick();
+  assert.equal((await store.listHandoffs()).length, 0);
+  await readyAgain(approved.turnId!);
+  await worker({ async respond() { throw new Error('Must reuse saved decision'); } }).tick();
+  const task = (await store.listHandoffs())[0]!;
+  assert.equal(task.kind, 'finalization');
+  assert.deepEqual(task.design_approval.design, render);
+  assert.equal(task.design_approval.customerText, 'This is the one. Finalize it.');
+  assert.deepEqual(task.design_approval.brief.materials, ['Dark cabinets', 'Existing backsplash']);
+  assert.equal(task.design_approval.brief.contractorName, null);
+  assert.equal((await store.getConversation(conversationId))?.paused, false);
+  assert.equal(await worker().tick(), false);
+  const recorded = await store.getTurn(approved.turnId!);
+  await store.finish(recorded!, recorded!.decision!, 'retry');
+  assert.equal((await store.listHandoffs()).length, 1);
+  // Operator completion and process restarts do not restart the approval conversation.
+  await request(app).patch(`/api/handoffs/${task.id}`).set(auth).send({ status: 'completed' }).expect(200);
+  const restarted = new Store(pool, 0);
+  assert.equal(designReview((await restarted.context(conversationId))!).finalized?.status, 'completed');
+  await store.ingest(incoming({ chatId, isGroup: false, text: 'Finalize it.' }), 'linq');
+  await worker(finalizeAgent).tick();
+  assert.equal((await pool.query("SELECT count(*) FROM handoffs WHERE kind='finalization'")).rows[0].count, '1');
+});
+
+test('a revision withdraws prior finalization before generation and requires approval of the new image', async () => {
+  const { chatId, conversationId } = await deliveredDesign();
+  await store.ingest(incoming({ chatId, isGroup: false, text: 'Finalize this.' }), 'linq');
+  await worker(finalizeAgent).tick();
+  const old = (await store.listHandoffs())[0]!;
+  await store.ingest(incoming({ chatId, isGroup: false, text: 'Actually, make the cabinets white.' }), 'linq');
+  const nextImage: Attachment = { id: randomUUID(), url: '/api/media/new-image', mimeType: 'image/jpeg', filename: 'white-cabinets.jpg', sizeBytes: 4 };
+  await worker({ async respond(ctx) { return decision({ reply: null, brief: { ...ctx.conversation.brief, materials: ['White cabinets', 'Existing backsplash'] }, handoff: { kind: 'design', summary: 'White cabinets' } }); } }, messenger, {
+    async generate() {
+      assert.equal((await store.listHandoffs()).length, 0);
+      assert.equal((await store.context(conversationId))!.finalizedDesign, null);
+      assert.equal(await store.completeHandoff(old.id), undefined);
+      return [nextImage];
+    },
+  }).tick();
+  assert.match(sent.at(-1)!.text, /Would you like to finalize/);
+  assert.equal(designReview((await store.context(conversationId))!).count, 2);
+  await store.ingest(incoming({ chatId, isGroup: false, text: 'Yes, finalize this version.' }), 'linq');
+  await worker(finalizeAgent).tick();
+  const tasks = await store.listHandoffs(); assert.equal(tasks.length, 1);
+  assert.equal(tasks[0]!.design_approval.design.id, nextImage.id);
+  assert.deepEqual(tasks[0]!.design_approval.brief.materials, ['White cabinets', 'Existing backsplash']);
+  assert.equal((await pool.query('SELECT status FROM handoffs WHERE id=$1', [old.id])).rows[0].status, 'superseded');
+});
+
+test('design-review state survives the history window and reset starts without a finalized project', async () => {
+  const { chatId, conversationId } = await deliveredDesign();
+  await store.ingest(incoming({ chatId, isGroup: false, text: 'Finalize this.' }), 'linq');
+  await worker(finalizeAgent).tick();
+  await pool.query("INSERT INTO messages(conversation_id,role,sender,text) SELECT $1,'user','homeowner','Thanks' FROM generate_series(1,45)", [conversationId]);
+  // Unrelated completed work can also push the approval out of the handoff window.
+  for (let i = 0; i < 31; i++) {
+    const turn = (await pool.query("INSERT INTO turns(conversation_id,through_seq,status) VALUES($1,0,'done') RETURNING id", [conversationId])).rows[0];
+    await pool.query("INSERT INTO handoffs(conversation_id,turn_id,kind,summary,status) VALUES($1,$2,'proposal','Historical task','completed')", [conversationId,turn.id]);
+  }
+  const ctx = (await new Store(pool, 0).context(conversationId))!;
+  assert.equal(ctx.messages.length, 40);
+  assert.equal(ctx.handoffs.some((task) => task.kind === 'finalization'), false);
+  assert.equal(designReview(ctx).count, 1); assert.ok(designReview(ctx).finalized);
+  const fresh = await store.ingest(incoming({ chatId, isGroup: false, text: '/new' }), 'linq', true);
+  const reset = (await store.context(fresh.conversationId!))!;
+  assert.equal(designReview(reset).count, 0); assert.equal(designReview(reset).finalized, null);
+  assert.equal((await store.listHandoffs()).length, 0);
 });
 
 test('duplicate event and message deliveries enqueue and respond exactly once', async () => {

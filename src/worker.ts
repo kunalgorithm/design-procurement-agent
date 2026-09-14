@@ -1,6 +1,6 @@
 import type { Logger } from 'pino';
 import type { Agent, Attachment, Decision, Messenger } from './domain.js';
-import { reactionTarget, validateDecision } from './domain.js';
+import { designReview, reactionTarget, validateDecision } from './domain.js';
 import { shouldGenerateKitchen, type DesignStudio } from './design.js';
 import { Store, type Turn } from './store.js';
 
@@ -107,7 +107,9 @@ export class Worker {
           await this.store.saveGeneratedAttachments(turn.id, attachments);
         }
         if (!output.reply && attachments.length) {
-          output = { ...output, reply: "Here's a proposed kitchen redesign based on the photos and notes you shared." };
+          output = { ...output, reply: designReview(context).count === 0
+            ? "Here’s a first design for your kitchen. What do you think? Let me know if you’d like to make any changes."
+            : "Here’s your updated design. Would you like to finalize it so your contractor can order materials and plan the work?" };
         }
       }
       let externalId: string | null = null;

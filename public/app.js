@@ -92,6 +92,12 @@ function renderAdmin(context = {}) {
   for (const task of handoffs) {
     const line = document.createElement('p');
     line.textContent = `Handoff ${task.kind}: ${task.summary}`;
+    if (task.design_approval) {
+      addGallery(line, [task.design_approval.design]);
+      const approval = document.createElement('span');
+      approval.textContent = ` Customer approval: ${task.design_approval.customerText}`;
+      line.append(approval);
+    }
     const done = document.createElement('button');
     done.type = 'button';
     done.textContent = 'Complete';

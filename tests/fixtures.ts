@@ -24,7 +24,7 @@ export function incoming(overrides: Partial<IncomingMessage> = {}): IncomingMess
     sentAt: new Date().toISOString(), ...overrides };
 }
 export function decision(overrides: Partial<Decision> = {}): Decision {
-  return { reply: 'Please share a few pictures of the existing kitchen.', reaction: null, brief: emptyBrief(), handoff: null, ...overrides };
+  return { reply: 'Please share a few pictures of the existing kitchen.', reaction: null, approval: null, brief: emptyBrief(), handoff: null, ...overrides };
 }
 export function context(): AgentContext {
   return { conversation: { id: randomUUID(), external_id: randomUUID(), channel: 'linq', is_group: true,
