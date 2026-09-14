@@ -121,7 +121,7 @@ test('/reset and /new archive the full old session and route later messages to f
     const sameMessage = structuredClone(payload); sameMessage.event_id = randomUUID();
     assert.equal((await deliver(sameMessage)).turnId, reset.turnId);
     await worker().tick();
-    assert.match(sent.at(-1)!.text, /fresh conversation/);
+    assert.equal(sent.at(-1)!.text, 'Started a fresh conversation.');
     const ctx = await store.context(reset.conversationId);
     assert.deepEqual(ctx?.conversation.brief, decision().brief);
     assert.equal(ctx?.messages.length, 0); assert.equal(ctx?.referenceMessages?.length, 0);

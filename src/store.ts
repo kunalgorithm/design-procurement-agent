@@ -103,7 +103,7 @@ export class Store {
       current = (await client.query<Conversation>(`INSERT INTO conversations(external_id,channel,is_group,owner_handle,brief)
         VALUES($1,$2,$3,$4,$5) RETURNING *`, [current.external_id,current.channel,current.is_group,current.owner_handle,JSON.stringify(emptyBrief())])).rows[0]!;
       await client.query('UPDATE messages SET conversation_id=$2 WHERE id=$1', [message.id,current.id]);
-      reply = 'Started a fresh conversation. Send the property address and kitchen photos when you’re ready. The previous session is archived.';
+      reply = 'Started a fresh conversation.';
     } else if (command === 'pause' || command === 'resume') {
       const paused = command === 'pause';
       current = (await client.query<Conversation>('UPDATE conversations SET paused=$2,updated_at=now() WHERE id=$1 RETURNING *', [current.id,paused])).rows[0]!;
