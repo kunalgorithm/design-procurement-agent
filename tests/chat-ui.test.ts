@@ -13,7 +13,7 @@ const env = {
 };
 
 function app(nodeEnv: 'development' | 'production', store: Partial<Store> = {}) {
-  return createApp(readConfig({ ...env, NODE_ENV: nodeEnv }), store as Store);
+  return createApp(readConfig({ ...env, NODE_ENV: nodeEnv }), { async readMedia() { return null; }, ...store } as Store);
 }
 
 const auth = { Authorization: `Bearer ${env.ADMIN_API_KEY}` };

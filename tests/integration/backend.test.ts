@@ -36,7 +36,7 @@ after(async () => { await pool.end(); await admin.query(`DROP SCHEMA ${schema} C
 
 test('migrations are repeatable', async () => {
   await migrate(pool);
-  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '3');
+  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '5');
 });
 
 test('duplicate event and message deliveries enqueue and respond exactly once', async () => {
@@ -154,19 +154,21 @@ test('pause then resume during generation does not resurrect a cancelled turn', 
   assert.equal((await store.getTurn(queued.turnId!))?.status, 'cancelled');
 });
 
-test('permanent failures are visible, block later automatic turns, and allow human takeover', async () => {
+test('permanent failures are visible, notify the user, and do not block later requests', async () => {
   const message = incoming(); const queued = await store.ingest(message, 'linq');
   await worker({ async respond() { throw Object.assign(new Error('Invalid key'), { status: 401 }); } }).tick();
   assert.equal((await store.getTurn(queued.turnId!))?.last_error, 'UPSTREAM_401');
   const failed = await request(app).get('/api/turns?status=failed').set(auth).expect(200);
   assert.equal(failed.body.turns[0].id, queued.turnId);
+  await worker().tick();
+  assert.match(sent[0]!.text, /couldn’t finish/);
   await store.ingest(incoming({ chatId: message.chatId }), 'linq');
-  assert.equal(await worker().tick(), false);
+  assert.equal(await worker().tick(), true);
   await store.pause(queued.conversationId!, true);
   const operator = await store.queueOperator(queued.conversationId!, 'A person is here to help.', randomUUID());
   await worker().tick();
   assert.equal((await store.getTurn(operator!.id))?.status, 'done');
-  assert.equal(sent[0]?.text, 'A person is here to help.');
+  assert.equal(sent.at(-1)?.text, 'A person is here to help.');
 });
 
 test('transient failures stop after five attempts and can be explicitly retried', async () => {
@@ -211,7 +213,7 @@ test('a generated kitchen image is stored on the assistant message', async () =>
   Object.assign(output.brief, { propertyAddress: '123 Example Street' });
   await worker({ async respond() { return output; } }, messenger, { async generate() { return [render]; } }).tick();
   const history = await store.context(queued.conversationId!);
-  const assistant = history?.messages.find((message) => message.role === 'assistant');
+  const assistant = history?.messages.findLast((message) => message.role === 'assistant');
   assert.deepEqual(assistant?.attachments, [render]);
   assert.equal((await store.listHandoffs()).length, 0);
 });
@@ -370,4 +372,166 @@ test('operator messages are idempotent and never invoke the model', async () => 
   assert.equal((await store.getTurn(body.requestId))?.status, 'done');
   assert.equal((await store.context(queued.conversationId!))?.messages.at(-1)?.role, 'operator');
   assert.equal(sent.length, 0);
+});
+
+test('progress precedes rendering and failed delivery reuses the saved image and message key', async () => {
+  const queued = await store.ingest(incoming(), 'linq');
+  const render: Attachment = { id: randomUUID(), url: '/unused-test-reference', mimeType: 'image/jpeg', filename: 'design.jpg', sizeBytes: 4 };
+  const output = decision({ reply: 'Here is the revised kitchen.', handoff: { kind: 'design', summary: 'Lighter cabinets' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } });
+  let models = 0; let renders = 0;
+  const deliveries: { key: string; text: string; attachments: Attachment[] }[] = [];
+  const model: Agent = { async respond() { models++; return output; } };
+  const transport: Messenger = { async send(_chat, text, key, attachments = []) {
+    deliveries.push({ key, text, attachments });
+    if (attachments.length && deliveries.filter((entry) => entry.attachments.length).length === 1) throw new Error('Lost acknowledgement');
+    return `sent-${key}`;
+  } };
+  const design: DesignStudio = { async generate() {
+    renders++;
+    assert.equal(deliveries.length, 1);
+    assert.match(deliveries[0]!.text, /working on your kitchen/);
+    return [render];
+  } };
+  await worker(model, transport, design).tick();
+  assert.deepEqual((await store.getTurn(queued.turnId!))?.generated_attachments, [render]);
+  assert.equal((await store.getTurn(queued.turnId!))?.status, 'processing');
+  assert.equal((await store.context(queued.conversationId!))?.handoffs.length, 0);
+  await readyAgain(queued.turnId!);
+  await worker(model, transport, design).tick();
+  assert.equal(models, 1); assert.equal(renders, 1);
+  assert.equal(deliveries.length, 3);
+  assert.deepEqual(deliveries[1], deliveries[2]);
+  assert.equal(deliveries[1]!.key, queued.turnId);
+  const ctx = await store.context(queued.conversationId!);
+  assert.equal(ctx?.handoffs[0]?.status, 'completed');
+  assert.deepEqual(ctx?.messages.at(-1)?.attachments, [render]);
+});
+
+test('one running worker serves a second chat while the first chat is rendering', async () => {
+  const first = incoming(); await store.ingest(first, 'sandbox');
+  let release!: () => void; let entered!: () => void; let answered!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const started = new Promise<void>((resolve) => { entered = resolve; });
+  const secondAnswered = new Promise<void>((resolve) => { answered = resolve; });
+  const model: Agent = { async respond(ctx) {
+    if (ctx.conversation.external_id !== first.chatId) { answered(); return decision(); }
+    return decision({ handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } });
+  } };
+  const design: DesignStudio = { async generate() { entered(); await gate; return []; } };
+  const runner = new Worker(store, model, messenger, logger, 20, 'sandbox', design, 2);
+  runner.start();
+  const deadline = (promise: Promise<void>) => Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Worker did not make progress')), 3000).unref())]);
+  try {
+    await deadline(started);
+    await store.ingest(incoming({ chatId: first.chatId, text: 'Keep the floor' }), 'sandbox');
+    await store.ingest(incoming(), 'sandbox');
+    await deadline(secondAnswered);
+  } finally { release(); await runner.stop(); }
+});
+
+test('STOP during a progress update prevents image generation and the final reply', async () => {
+  const message = incoming(); const queued = await store.ingest(message, 'linq');
+  let renders = 0;
+  await worker({ async respond() { return decision({ handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } }); } }, {
+    async send() { await store.ingest(incoming({ chatId: message.chatId, text: 'STOP' }), 'linq'); return 'progress-accepted'; },
+  }, { async generate() { renders++; return []; } }).tick();
+  assert.equal(renders, 0);
+  assert.equal((await store.getTurn(queued.turnId!))?.status, 'cancelled');
+});
+
+test('failure updates retry with a stable key and stop after a newer request succeeds', async () => {
+  const message = incoming(); const queued = await store.ingest(message, 'linq');
+  await worker({ async respond() { throw Object.assign(new Error('Unavailable'), { status: 400 }); } }).tick();
+  const keys: string[] = [];
+  const transport: Messenger = { async send(_chat, _text, key) { keys.push(key); throw new Error('Ambiguous update delivery'); } };
+  await worker(agent, transport).tick();
+  await readyAgain(queued.turnId!);
+  await worker(agent, transport).tick();
+  assert.equal(keys.length, 2); assert.equal(keys[0], keys[1]);
+  const next = await store.ingest(incoming({ chatId: message.chatId, text: 'A new question' }), 'linq');
+  await worker().tick();
+  assert.equal((await store.getTurn(next.turnId!))?.status, 'done');
+  await readyAgain(queued.turnId!);
+  await worker(agent, transport).tick();
+  assert.equal(keys.length, 2);
+  assert.ok((await store.getTurn(queued.turnId!))?.failure_notified_at);
+  assert.equal(await store.retryTurn(queued.turnId!), undefined, 'Do not replay obsolete decisions over a newer completed turn');
+});
+
+test('missing reference images produce a recovery reply without a completed design', async () => {
+  const queued = await store.ingest(incoming(), 'sandbox');
+  await worker({ async respond() { return decision({ reply: 'Here is your design', handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } }); } }, messenger,
+    { async generate() { throw new Error('REFERENCE_IMAGES_UNAVAILABLE'); } }).tick();
+  const ctx = await store.context(queued.conversationId!);
+  assert.match(ctx?.messages.at(-1)?.text ?? '', /send a JPEG or PNG/);
+  assert.equal(ctx?.handoffs.length, 0);
+  assert.equal((await store.getTurn(queued.turnId!))?.status, 'done');
+});
+
+test('a plain try-again message resends the saved design without another model or image call', async () => {
+  const message = incoming(); const queued = await store.ingest(message, 'linq');
+  const render: Attachment = { id: randomUUID(), url: '/unused-test-reference', mimeType: 'image/jpeg', filename: 'design.jpg', sizeBytes: 4 };
+  let models = 0; let renders = 0; let failDelivery = true;
+  const deliveries: { key: string; attachments: Attachment[] }[] = [];
+  const model: Agent = { async respond() { models++; return decision({ reply: 'Here is your design.', handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } }); } };
+  const transport: Messenger = { async send(_chat, _text, key, attachments = []) {
+    deliveries.push({ key, attachments });
+    if (attachments.length && failDelivery) throw Object.assign(new Error('Delivery rejected'), { status: 400 });
+    return `sent-${key}`;
+  } };
+  const studio: DesignStudio = { async generate() { renders++; return [render]; } };
+  await worker(model, transport, studio).tick();
+  await worker(model, transport, studio).tick();
+  assert.match((await store.context(queued.conversationId!))?.messages.at(-1)?.text ?? '', /Reply ‘try again’ to resend/);
+  const retryMessage = incoming({ chatId: message.chatId, text: 'try again' });
+  const retry = await store.ingest(retryMessage, 'linq');
+  assert.equal(retry.turnId, queued.turnId);
+  assert.equal((await store.ingest(retryMessage, 'linq')).turnId, queued.turnId);
+  failDelivery = false;
+  await worker(model, transport, studio).tick();
+  assert.equal(models, 1); assert.equal(renders, 1);
+  assert.deepEqual(deliveries.filter((item) => item.attachments.length), [
+    { key: queued.turnId!, attachments: [render] }, { key: queued.turnId!, attachments: [render] },
+  ]);
+  assert.equal((await store.getTurn(queued.turnId!))?.status, 'done');
+  const newRequest = await store.ingest(incoming({ chatId: message.chatId, text: 'try again, but use green cabinets' }), 'linq');
+  assert.notEqual(newRequest.turnId, queued.turnId);
+});
+
+test('a retry after another failure gets a fresh failure notice and cannot revive older work', async () => {
+  const message = incoming(); const queued = await store.ingest(message, 'sandbox');
+  const unavailable: Agent = { async respond() { throw Object.assign(new Error('Unavailable'), { status: 400 }); } };
+  await worker(unavailable).tick();
+  await worker(unavailable).tick();
+  await store.ingest(incoming({ chatId: message.chatId, text: 'please try again' }), 'sandbox');
+  await worker(unavailable).tick();
+  await worker(unavailable).tick();
+  const notices = (await store.context(queued.conversationId!))?.messages.filter((item) => item.role === 'assistant') ?? [];
+  assert.equal(notices.length, 2);
+  assert.notEqual(notices[0]!.id, notices[1]!.id);
+  const newer = await store.ingest(incoming({ chatId: message.chatId, text: 'A different question' }), 'sandbox');
+  await worker().tick();
+  const next = await store.ingest(incoming({ chatId: message.chatId, text: 'try again' }), 'sandbox');
+  assert.notEqual(next.turnId, queued.turnId);
+  assert.notEqual(next.turnId, newer.turnId);
+  assert.equal(await store.retryTurn(queued.turnId!), undefined);
+});
+
+test('generated image bytes and the current design remain available beyond the recent message window', async () => {
+  const queued = await store.ingest(incoming(), 'sandbox');
+  const id = randomUUID(); const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+  const render: Attachment = { id, url: `/api/media/${id}`, mimeType: 'image/jpeg', filename: 'design.jpg', sizeBytes: bytes.length };
+  await store.saveMedia(queued.conversationId!, render, bytes);
+  await worker({ async respond() { return decision({ handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } }); } }, messenger, { async generate() { return [render]; } }).tick();
+  for (let i = 0; i < 45; i++) await pool.query("INSERT INTO messages(conversation_id,role,sender,text) VALUES($1,'user','homeowner','More notes')", [queued.conversationId]);
+  const ctx = await store.context(queued.conversationId!);
+  assert.equal(ctx?.messages.length, 40);
+  assert.ok(ctx?.referenceMessages?.some((message) => message.attachments.some((item) => item.id === id)));
+  const media = await request(app).get(`/api/media/${id}`).set(auth).expect(200);
+  assert.deepEqual(media.body, bytes);
+  await request(app).get(`/api/media/${id}`).expect(401);
+  await store.saveProviderAttachment(id, 'linq-upload');
+  assert.equal(await store.providerAttachment(id), 'linq-upload');
+  await store.clearConversation(queued.conversationId!);
+  assert.equal(await store.readMedia(id), null);
 });

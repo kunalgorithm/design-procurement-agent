@@ -1,7 +1,13 @@
 import { z } from 'zod';
 
+const imageReferenceSchema = z.object({
+  attachmentId: z.string().max(200),
+  purpose: z.enum(['current_kitchen', 'floor_plan', 'inspiration', 'unknown']),
+});
+const imageReferencesSchema = z.array(imageReferenceSchema).max(40);
 const detail = z.string().max(2000).nullable();
 export const briefSchema = z.object({
+  imageReferences: imageReferencesSchema.optional(),
   homeownerName: detail,
   contractorName: detail,
   propertyAddress: detail,
@@ -18,6 +24,7 @@ export const briefSchema = z.object({
 });
 export type Brief = z.infer<typeof briefSchema>;
 export const emptyBrief = (): Brief => ({
+  imageReferences: [],
   homeownerName: null, contractorName: null, propertyAddress: null, scope: null,
   goals: [], style: null, materials: [], appliances: [], budget: null, timeline: null,
   reportedMeasurements: null, constraints: [], openQuestions: [],
@@ -35,7 +42,7 @@ export const decisionSchema = z.object({
   handoff: z.object({ kind: taskKindSchema, summary: z.string().min(1).max(2000) }).nullable(),
 });
 // OpenAI's strict output schema requires every field, including nullable ones.
-export const modelDecisionSchema = decisionSchema.extend({ reaction: reactionSchema.nullable() });
+export const modelDecisionSchema = decisionSchema.extend({ reaction: reactionSchema.nullable(), brief: briefSchema.extend({ imageReferences: imageReferencesSchema }) });
 export type Decision = z.infer<typeof decisionSchema>;
 
 export const attachmentSchema = z.object({
@@ -52,6 +59,7 @@ export interface IncomingMessage {
 export interface Conversation {
   id: string; external_id: string; channel: 'linq' | 'sandbox';
   is_group: boolean; owner_handle: string | null; paused: boolean;
+  archived_at?: Date | null;
   brief: Brief; created_at: Date; updated_at: Date;
 }
 export interface Message {
@@ -63,10 +71,10 @@ export interface Message {
 export interface Handoff {
   id: string; kind: TaskKind; summary: string; status: 'open' | 'completed';
 }
-export interface AgentContext { conversation: Conversation; messages: Message[]; handoffs: Handoff[]; hasAssistantReply?: boolean }
+export interface AgentContext { conversation: Conversation; messages: Message[]; handoffs: Handoff[]; hasAssistantReply?: boolean; referenceMessages?: Message[] }
 export interface Agent { respond(context: AgentContext): Promise<Decision> }
 export interface Messenger {
-  send(chatId: string, text: string, idempotencyKey: string): Promise<string>;
+  send(chatId: string, text: string, idempotencyKey: string, attachments?: Attachment[]): Promise<string>;
   react?(messageId: string, emoji: Reaction): Promise<void>;
 }
 
@@ -113,19 +121,25 @@ export function validateDecision(decision: Decision, context: AgentContext): Dec
   const parsed = decisionSchema.parse(decision);
   if (parsed.handoff?.kind === 'design') {
     if (!parsed.brief.propertyAddress) {
-      return { ...parsed, handoff: null, reply: parsed.reply || 'I can generate a kitchen redesign as soon as I have the property address.' };
+      return { ...parsed, handoff: null, reply: 'What is the property address for this kitchen?' };
     }
     parsed.brief.scope = parsed.brief.scope || 'Kitchen redesign';
   } else if (parsed.handoff && parsed.handoff.kind !== 'human') {
     const brief = parsed.brief;
-    if (!brief.contractorName || !brief.homeownerName || !brief.propertyAddress || !brief.scope) {
-      // Never announce a handoff that cannot be queued with useful project context.
-      return { ...parsed, handoff: null, reply: 'Before I hand this over, please confirm the contractor and homeowner names, property address, and the work you want done.' };
-    }
+    const questions = [
+      [brief.propertyAddress, 'What is the property address for this project?'],
+      [brief.scope, 'What work should the team include in this request?'],
+      [brief.contractorName, 'What is the contractor’s name?'],
+      [brief.homeownerName, 'What is the homeowner’s name?'],
+    ];
+    const missing = questions.find(([value]) => !value?.trim());
+    if (missing) return { ...parsed, handoff: null, reply: missing[1]! };
   }
   if (parsed.handoff && parsed.handoff.kind !== 'human'
     && context.handoffs.some((task) => task.kind === parsed.handoff!.kind && task.status === 'open')) {
+    const kind = parsed.handoff.kind;
     parsed.handoff = null;
+    parsed.reply = `Your ${kind} request is already with the team. I’ve kept your latest notes here.`;
   }
   return parsed;
 }

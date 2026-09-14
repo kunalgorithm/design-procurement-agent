@@ -11,11 +11,14 @@ The editable conversation prompt lives in [`prompts/designer.md`](prompts/design
 - PostgreSQL conversation history, project briefs, handoffs, and durable queued replies.
 - Debouncing, duplicate-event protection, per-chat serialization, retries, and stable Linq send idempotency keys.
 - Human takeover, pause/resume, explicit STOP handling, operator messages, and failed-turn inspection.
+- Phone-restricted `/reset` (`/new`), `/pause`, `/resume`, and `/status` commands in live chats.
 - A public contractor landing page and signup flow, with a Messages handoff and downloadable FORM contact card.
 - A sandbox web UI and `npm run chat` that exercise the same backend without sending real texts.
 - Render Blueprint, PostgreSQL, health checks, graceful shutdown, and deployment after GitHub checks pass.
 
-A `design` handoff generates a kitchen image from the conversation photos and notes and attaches it to FORM's reply in the web UI. Proposal and procurement handoffs still create database records for an operator. This backend does not fetch live catalog prices, produce binding proposals, buy materials, notify an external team, or place calls. Generated images are stored on the instance disk with other sandbox media and do not survive deploys or restarts. Live Linq replies remain text-only in this version.
+A `design` handoff sends a brief progress message, generates a kitchen image from the conversation photos and notes, and attaches it to FORM's reply in both the sandbox and live Linq chats. Generated images are stored in PostgreSQL so delivery retries and later revisions can reuse them after a restart. Proposal and procurement handoffs still create database records for an operator. This backend does not fetch live catalog prices, produce binding proposals, buy materials, notify an external team, or place calls.
+
+FORM asks one useful question at a time, distinguishes the existing kitchen from inspiration, and uses the latest design as the baseline for revisions. Ordinary negative design feedback prompts a revision; explicit requests for a person and serious unresolved service problems can trigger human takeover. Proposal and procurement requests collect their missing required details one at a time.
 
 ## Run locally
 
@@ -56,6 +59,8 @@ npm run chat
 
 Every push to `main` runs type checking, unit tests, a production build, and PostgreSQL integration tests. `autoDeployTrigger: checksPass` lets Render deploy after the checks succeed. Ensure GitHub Actions is enabled and Render has repository access. Migrations run before the service accepts traffic; queued work survives deploys. Use additive, backwards-compatible migrations so an older process can finish during a rolling deployment.
 
+For the first rollout of migration `005_chat_commands.sql`, enable maintenance mode and let all pending/processing work finish (or stop the old workers) before migrating. Keep public traffic disabled until the new version is live and the old instances have retired. This migration replaces the conversation uniqueness constraint to allow archived sessions; older versions cannot ingest messages against that new constraint. Existing conversations, messages, briefs, media, and queued work are retained. Historical failed turns remain inspectable without sending new failure alerts during rollout. Subsequent restarts of the new version use the normal startup migration flow.
+
 ### Connect Linq iMessage / RCS / SMS
 
 Use an active Linq messaging line and its API key. This integration uses the iMessage channel API (which also carries RCS/SMS), not the separate WhatsApp API.
@@ -89,6 +94,23 @@ LINQ_ALLOWED_HANDLES=<optional comma-separated owned Linq phone numbers>
 
 Before switching live, the webhook endpoint returns 503. Complete configuration before testing real traffic. Start a group containing the Linq line, contractor, and homeowner, then send an introduction. The agent responds to incoming messages; it does not create groups or proactively text new contacts. Delivery and group capabilities depend on the participants' available transport and your Linq line.
 
+### Admin commands in Messages
+
+Send a command as the entire message, without attachments. Commands apply to the direct message or group where they are sent; everyone in that chat can see the confirmation.
+
+| Command | Effect |
+| --- | --- |
+| `/reset` or `/new` | Archive the current session and start fresh in the same Messages thread. Clear the agent's active brief, image references, and handoffs; cancel unfinished work from the previous session. |
+| `/pause` | Pause automatic replies and cancel pending or running agent turns. |
+| `/resume` | Enable automatic replies for the next incoming message. Cancelled work is not replayed. |
+| `/status` | Report active/paused state, working/queued/failed agent request counts, and open handoff types for this chat. |
+
+`LINQ_ADMIN_NUMBERS` contains the allowed sender phone numbers. Set this privately in the Render service environment as a comma-separated list of international phone numbers; the Blueprint leaves its value unmanaged. Keep real admin phone numbers out of this public repository. An empty or missing setting grants nobody admin-command access. This list is separate from `LINQ_ALLOWED_HANDLES`, which filters FORM's owned messaging lines.
+
+Authorization uses the sender phone handle from a verified Linq webhook, never the message text, a display name, or the group's owned line. Unlisted senders receive an access-denied reply without changing the chat. Commands are handled in the backend without a model call, work while paused, and have durable, idempotent confirmations. Command messages and confirmations are retained for audit but excluded from the model's conversation context. The ordinary `STOP` opt-out remains available to every participant.
+
+Reset archives the earlier session instead of deleting the Messages transcript or stored project history. The admin API can list archives with `GET /api/conversations?archived=true` and inspect one by its conversation ID. Its handoffs no longer appear in the active work list. New messages use only the fresh session. A pause or reset prevents later sends from cancelled work but cannot recall a message Linq has already accepted.
+
 ## Contractor onboarding
 
 The public flow collects first and last name, phone, email, optional website, and optional contractor license number. The React source is in `web/`; `npm run build:web` compiles it to ignored `public/site/`, served by the same Express app. Frontend requests use this service’s own origin. After frontend edits, rebuild with `npm run build:web` (or run it with `-- --watch` on the Vite command). `npm run dev` builds the frontend before starting the backend.
@@ -114,8 +136,8 @@ The contractor landing page is served at `/` (also `/contractors`), signup at `/
 | GET | `/readyz` | Database readiness |
 | POST | `/webhooks/linq` | Signed inbound events; acknowledge after persistence |
 | POST | `/api/sandbox/messages` | Test a conversation with no real text delivery; optional photos |
-| GET | `/api/media/:id` | Sandbox photo uploaded from the web UI |
-| GET | `/api/conversations` | Latest 100 conversations |
+| GET | `/api/media/:id` | Uploaded sandbox photo or saved generated design; admin access required |
+| GET | `/api/conversations` | Latest 100 active sessions; `?archived=true` lists archived sessions |
 | GET | `/api/conversations/:id` | Brief, latest 40 messages, latest 30 handoffs, and failed turns |
 | PATCH | `/api/conversations/:id` | Pause/resume with `{"paused":true}` or `false` |
 | DELETE | `/api/conversations/:id` | Clear a sandbox conversation's messages, brief, and queued work |
@@ -141,15 +163,17 @@ For an operator message, submit `{"text":"Here is the reviewed design: https://e
 
 ## Operations and iteration
 
-The request handler verifies the raw webhook signature and persists the inbound event before returning 200. A worker in the same process groups short message bursts, reads the latest history and saved brief, asks the model for a structured decision, saves it, generates a kitchen image when a design handoff is ready, sends the reply, then records completion.
+The request handler verifies the raw webhook signature and persists the inbound event before returning 200. A worker in the same process groups short message bursts, reads the latest history and saved brief, asks the model for a structured decision, and saves it. For a design, it sends a progress update, generates and saves the image, and sends the final text and image together. It records completion after the messaging API accepts the send. The worker processes up to `WORKER_CONCURRENCY` different chats at once (default 3, allowed 1–4) while preserving order within each chat. The sandbox shows progress in the conversation and keeps the composer available for drafting the next message.
 
 Outbound echoes, unrelated events, empty messages, and delayed historical events marked `reconciled_at` are ignored. This version does not import historical chats. Rich link previews are kept as text URLs; their webpages are not fetched.
 
-The decision is saved **before** calling Linq, and the turn UUID is reused as Linq's `message.idempotency_key`. An ambiguous send can therefore retry the same reply without generating another decision. This relies on Linq's idempotency semantics; it does not guarantee delivery or prevent the provider's own failures. An abandoned processing lease becomes recoverable after four minutes so image generation can finish. Retries back off and stop after five attempts; most upstream 4xx errors fail immediately. A failed image call retries the saved decision without asking the chat model again.
+The decision and generated image are saved **before** final delivery. Linq media is pre-uploaded, its attachment ID is saved, and the turn UUID is reused as `message.idempotency_key`. An ambiguous send can therefore retry the same text and image without another model or image-generation call. Progress and failure notices have their own stable send keys. This relies on Linq's idempotency semantics; API acceptance is not confirmation of handset delivery. An abandoned processing lease becomes recoverable after four minutes. Retries back off and stop after five attempts; most upstream 4xx errors fail immediately. A failed image-generation call retries the saved decision without asking the chat model again.
 
-Inspect `/api/turns?status=failed` and `/api/handoffs` regularly. A failed turn blocks later automatic work in that chat until retried or cancelled by pausing the conversation. Other chats can continue. To take over after a failure, pause the conversation and queue an operator message. STOP cancels outstanding automatic turns and pauses the conversation. A pause cannot recall a send Linq has already accepted. The sandbox web UI is the local/Render operator surface for this; it does not replace a customer-facing product.
+Inspect `/api/turns?status=failed` and `/api/handoffs` regularly. A terminally failed turn attempts a short recovery message (up to three delivery attempts) and allows later requests to proceed. Replying `try again`, `retry`, or `resend` retries the latest failed request with its saved decision, image, and final-message key. Requests containing new instructions or attachments start a new turn. Obsolete failure notices are suppressed after a newer agent turn completes, and an old failed turn cannot be retried after newer work has started or completed. To take over, pause the conversation and queue an operator message. STOP cancels outstanding automatic turns and pauses the conversation. A pause cannot recall a send Linq has already accepted. The sandbox web UI is the local/Render operator surface for this; it does not replace a customer-facing product.
 
-Linq photos are retained as CDN references, not copied into permanent file storage. Sandbox photos uploaded in the web UI are stored on the instance disk and inlined to the model. Recent JPEG, PNG, WebP, GIF, and PDF attachments can be passed to the model (up to five, at most 20 MB each). Older Linq links expire; observations retained in the brief survive. A media-related bad request gets one text-only retry so the agent can ask for another upload. Audio, video, HEIC, and other formats remain references and need a description or supported upload. Add durable media storage and image conversion before relying on a permanent project photo library.
+Generated designs are stored in PostgreSQL and remain available as visual references beyond the recent 40-message text window. The chat model receives up to five image/PDF references, prioritizing the newest uploads and reserving a slot for the latest design. The image generator can use up to 16 supported references, labeled as current kitchen, floor plan, inspiration, or the latest design to revise. If no usable image can be reopened, FORM asks for a fresh JPEG/PNG instead of claiming to have produced a design.
+
+Original Linq photos remain CDN references, and uploaded sandbox photos remain on instance disk. Those original uploads are not a permanent project photo library. Recent JPEG, PNG, WebP, GIF, and PDF attachments can be passed to the chat model (at most 20 MB each); image generation supports JPEG, PNG, and WebP. Older Linq links expire; observations and image roles retained in the brief survive. A media-related bad request gets one text-only retry so the agent can ask for another upload. Audio, video, HEIC, and other formats need a description or supported upload. Add durable original-upload storage and image conversion before relying on a permanent project photo library.
 
 Conversation content and briefs live in PostgreSQL. OpenAI requests use `store:false`; this does not override provider retention policies. Logs contain turn IDs and error categories rather than customer messages or API keys. The admin API is a single-operator backend without tenant accounts. Sandbox chats can be cleared from the web UI or `DELETE /api/conversations/:id`.
 
@@ -160,6 +184,7 @@ Conversation content and briefs live in PostgreSQL. OpenAI requests use `store:f
 | Model choice and image input | `src/agent.ts`, `OPENAI_MODEL` |
 | Kitchen image generation | `src/design.ts`, `OPENAI_IMAGE_MODEL` |
 | Linq webhook mapping and outbound messages | `src/linq.ts` |
+| Admin command parsing, authorization, and session reset | `src/chat-commands.ts`, `src/config.ts`, `src/app.ts`, `src/store.ts` |
 | HTTP endpoints | `src/app.ts` |
 | Contractor landing page and signup UI | `web/` |
 | Sandbox web UI | `public/index.html`, `public/app.js`, `public/styles.css` |
@@ -180,7 +205,7 @@ npm run check
 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/design_procurement_agent npm run test:integration
 ```
 
-Prefer a dedicated database for integration tests. Each run creates and drops its own isolated schema; existing application tables are not truncated. Tests use real PostgreSQL and mocked model/messaging transports, so no paid API keys or real sends are involved. They cover signatures and replay protection, sender identity, burst coalescing, cross-project isolation, durable retries, restart recovery, human takeover, handoffs, API authentication, and sandbox behavior. Live API delivery and dialogue quality still require a configured account and a human smoke test.
+Prefer a dedicated database for integration tests. Each run creates and drops its own isolated schema; existing application tables are not truncated. Tests use real PostgreSQL and mocked model/messaging transports, so no paid API keys or real sends are involved. They cover signatures and replay protection, sender identity, burst coalescing, cross-project isolation, durable text/image retries, progress ordering, concurrent chats, recovery messages, restart recovery, visual context, human takeover, handoffs, API authentication, sandbox behavior, both phone-based admins, command denial, reset isolation, and suppression of cancelled render results. Live API delivery and dialogue quality still require a configured account and a human smoke test. Include ambiguous photo roles, inspiration-only concepts, “I hate those cabinets,” a revision to an older design, and an explicit request for a person in that dialogue check.
 
 ## API references
 

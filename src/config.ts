@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizePhoneNumber } from './chat-commands.js';
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -15,7 +16,16 @@ const schema = z.object({
   FORM_CONTACT_WEBSITE: z.url({ protocol: /^https?$/ }).or(z.literal('')).default(''),
   LINQ_WEBHOOK_SECRET: z.string().default(''),
   LINQ_ALLOWED_HANDLES: z.string().default(''),
+  LINQ_ADMIN_NUMBERS: z.string().default('').transform((value, ctx) => {
+    const numbers = value.split(',').map((item) => item.trim()).filter(Boolean).map(normalizePhoneNumber);
+    if (numbers.some((number) => !number)) {
+      ctx.addIssue({ code: 'custom', message: 'Use comma-separated international phone numbers, each beginning with +' });
+      return z.NEVER;
+    }
+    return [...new Set(numbers as string[])];
+  }),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
+  WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(3),
   WORKER_POLL_MS: z.coerce.number().int().min(100).default(1000),
   REPLY_DEBOUNCE_MS: z.coerce.number().int().min(0).max(10000).default(1500),
 }).superRefine((value, ctx) => {

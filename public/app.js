@@ -56,7 +56,7 @@ function setBusy(busy) {
   state.busy = busy;
   send.disabled = busy;
   attach.disabled = busy;
-  input.disabled = busy;
+  input.disabled = false; // Keep the next message editable while this turn runs.
   operatorSend.disabled = busy;
 }
 
@@ -282,18 +282,29 @@ async function request(path, options = {}) {
 }
 
 async function waitForTurn(turnId) {
+  let lastMessageId = null;
+  const conversationId = state.conversationId;
   for (let attempt = 0; attempt < 180; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     const { turn } = await request(`/turns/${turnId}`);
+    if (conversationId && conversationId === state.conversationId) {
+      const context = await request(`/conversations/${conversationId}`);
+      const newest = context.messages.at(-1)?.id;
+      if (newest !== lastMessageId) {
+        lastMessageId = newest;
+        renderHistory(context);
+        if (turn.status === 'pending' || turn.status === 'processing') showPending();
+      }
+    }
     if (turn.status === 'done') return turn;
     if (turn.status === 'failed' || turn.status === 'cancelled') {
-      const error = new Error(turn.last_error ? `Turn ${turn.status}: ${turn.last_error}` : `Turn ${turn.status}`);
+      const error = new Error(turn.status === 'failed' ? 'That request didn’t finish. Retry it below, or send a new message.' : 'That request was stopped.');
       error.turnId = turn.id;
       error.failed = turn.status === 'failed';
       throw error;
     }
   }
-  throw new Error(`Still processing. Inspect this turn: ${turnId}`);
+  throw new Error('This is taking longer than expected. Your request is saved; check back here for the result.');
 }
 
 async function refreshAdmin() {

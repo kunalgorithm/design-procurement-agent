@@ -121,23 +121,13 @@ test('kitchen generation uses reference photos and the property address', async 
   assert.equal(attachments[0]!.mimeType, 'image/jpeg');
 });
 
-test('kitchen generation falls back to text-only images when no photos are available', async () => {
+test('missing reference photos ask for a replacement rather than generating an unrelated kitchen', async () => {
   const ctx = context();
-  const output = decision({
-    handoff: { kind: 'design', summary: 'Generate from the address.' },
-    brief: { ...decision().brief, propertyAddress: '88 Pine Street' },
-  });
-  const client = {
-    images: {
-      async edit() { throw new Error('should generate without reference photos'); },
-      async generate(body: { prompt: string }) {
-        assert.match(body.prompt, /88 Pine Street/);
-        return { data: [{ b64_json: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64') }] };
-      },
-    },
-  };
-  const attachments = await new OpenAIDesignStudio(client as never, 'gpt-image-1.5').generate(ctx, output);
-  assert.equal(attachments[0]?.mimeType, 'image/jpeg');
+  const output = decision({ handoff: { kind: 'design', summary: 'Generate from the address.' },
+    brief: { ...decision().brief, propertyAddress: '88 Pine Street' } });
+  const client = { images: { async edit() { assert.fail('No image call without references'); },
+    async generate() { assert.fail('Do not fabricate an unrelated kitchen'); } } };
+  await assert.rejects(new OpenAIDesignStudio(client as never, 'test').generate(ctx, output), /REFERENCE_IMAGES_UNAVAILABLE/);
 });
 
 test('only passes supported, bounded files on the Linq CDN to the model', () => {
@@ -243,7 +233,7 @@ test('OpenAI request uses strict structured output, sender context, and actual i
     assert.equal(body.text.format.type, 'json_schema');
     assert.equal(body.text.format.strict, true);
     assert.ok(body.text.format.schema.required.includes('reaction'));
-    assert.equal(body.input[2].content[1].type, 'input_image');
+    assert.equal(body.input[2].content.find((part: { type: string }) => part.type === 'input_image').type, 'input_image');
     assert.match(body.input[2].content[0].text, /12025550101/);
     assert.match(body.input[2].content[0].text, /"role":null/);
     return new Response(JSON.stringify({ id: 'resp_test', object: 'response', status: 'completed', output: [{ id: 'msg_test', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: JSON.stringify(expected), annotations: [] }] }] }), { headers: { 'content-type': 'application/json' } });
@@ -259,7 +249,7 @@ test('an expired media URL falls back to text with an explicit missing-content i
     calls++;
     if (calls === 1) return new Response(JSON.stringify({ error: { message: 'Failed to download image', type: 'invalid_request_error', code: 'invalid_image_url' } }), { status: 400, headers: { 'content-type': 'application/json' } });
     const body = JSON.parse(String(init?.body));
-    assert.equal(body.input[2].content.length, 1);
+    assert.ok(body.input.every((item: { content: unknown }) => !Array.isArray(item.content) || item.content.every((part: { type: string }) => !['input_image', 'input_file'].includes(part.type))));
     assert.match(body.input[2].content[0].text, /"role":"homeowner"/);
     assert.match(body.input.at(-1).content, /No attachment contents are available/);
     return new Response(JSON.stringify({ id: 'resp_test', object: 'response', status: 'completed', output: [{ id: 'msg_test', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: JSON.stringify(expected), annotations: [] }] }] }), { headers: { 'content-type': 'application/json' } });
@@ -277,8 +267,8 @@ test('sandbox photos are inlined for the model', async () => {
     attachments: [{ id, url: `/api/media/${id}`, filename: 'kitchen.jpg', mimeType: 'image/jpeg', sizeBytes: 4 }] });
   const client = new OpenAI({ apiKey: 'not-a-real-key', maxRetries: 0, fetch: async (_url, init) => {
     const body = JSON.parse(String(init?.body));
-    assert.equal(body.input[2].content[1].type, 'input_image');
-    assert.match(body.input[2].content[1].image_url, /^data:image\/jpeg;base64,/);
+    assert.equal(body.input[2].content.find((part: { type: string }) => part.type === 'input_image').type, 'input_image');
+    assert.match(body.input[2].content.find((part: { type: string }) => part.type === 'input_image').image_url, /^data:image\/jpeg;base64,/);
     return new Response(JSON.stringify({ id: 'resp_test', object: 'response', status: 'completed', output: [{ id: 'msg_test', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: JSON.stringify(expected), annotations: [] }] }] }), { headers: { 'content-type': 'application/json' } });
   } });
   assert.deepEqual(await new OpenAIAgent(client, 'gpt-5-mini').respond(ctx), expected);

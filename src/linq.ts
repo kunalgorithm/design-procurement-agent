@@ -1,6 +1,8 @@
 import Linq from '@linqapp/sdk';
 import { z } from 'zod';
-import type { IncomingMessage, Messenger, Reaction } from './domain.js';
+import type { Attachment, IncomingMessage, Messenger, Reaction } from './domain.js';
+
+import { readProjectMedia, type MediaRepository } from './media.js';
 
 const handle = z.object({ handle: z.string().min(1).max(200), is_me: z.boolean().nullish() });
 const eventSchema = z.object({
@@ -45,16 +47,33 @@ export function createLinq(apiKey: string, webhookSecret: string) {
 }
 
 export class LinqMessenger implements Messenger {
-  constructor(private readonly client: Linq) {}
+  constructor(private readonly client: Linq, private readonly media?: MediaRepository, private readonly upload: typeof fetch = fetch) {}
   async react(messageId: string, emoji: Reaction): Promise<void> {
     await this.client.messages.addReaction(messageId, emoji === '❤️'
       ? { operation: 'add', type: 'love' }
       : emoji === '👍' ? { operation: 'add', type: 'like' }
         : { operation: 'add', type: 'custom', custom_emoji: emoji });
   }
-  async send(chatId: string, text: string, idempotencyKey: string): Promise<string> {
+  async send(chatId: string, text: string, idempotencyKey: string, attachments: Attachment[] = []): Promise<string> {
+    const parts: Array<{ type: 'text'; value: string } | { type: 'media'; attachment_id: string }> = [];
+    if (text) parts.push({ type: 'text', value: text });
+    for (const attachment of attachments) {
+      let providerId = await this.media?.providerAttachment(attachment.id);
+      if (!providerId) {
+        const file = await readProjectMedia(attachment.id, this.media);
+        if (!file || file.mimeType !== 'image/jpeg') throw Object.assign(new Error('RENDER_UNAVAILABLE'), { status: 422 });
+        const upload = await this.client.attachments.create({ filename: file.filename, content_type: 'image/jpeg', size_bytes: file.bytes.length });
+        const response = await this.upload(upload.upload_url, {
+          method: 'PUT', headers: upload.required_headers, body: new Uint8Array(file.bytes), signal: AbortSignal.timeout(30_000),
+        });
+        if (!response.ok) throw Object.assign(new Error('MEDIA_UPLOAD_FAILED'), { status: response.status });
+        providerId = upload.attachment_id;
+        await this.media?.saveProviderAttachment(attachment.id, providerId);
+      }
+      parts.push({ type: 'media', attachment_id: providerId });
+    }
     const response = await this.client.chats.messages.send(chatId, {
-      message: { parts: [{ type: 'text', value: text }], idempotency_key: idempotencyKey },
+      message: { parts, idempotency_key: idempotencyKey },
     });
     return response.message.id;
   }

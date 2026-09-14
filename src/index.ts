@@ -16,10 +16,10 @@ pool.on('error', () => logger.error('Idle database connection failed'));
 await migrate(pool);
 const store = new Store(pool, config.REPLY_DEBOUNCE_MS);
 const openai = new OpenAI({ apiKey: config.OPENAI_API_KEY, timeout: 60000, maxRetries: 0 });
-const agent = new OpenAIAgent(openai, config.OPENAI_MODEL);
-const design = new OpenAIDesignStudio(openai, config.OPENAI_IMAGE_MODEL);
-const messenger = new LinqMessenger(createLinq(config.LINQ_API_KEY || 'sandbox-disabled', config.LINQ_WEBHOOK_SECRET));
-const worker = new Worker(store, agent, messenger, logger, config.WORKER_POLL_MS, config.MESSAGING_MODE, design);
+const agent = new OpenAIAgent(openai, config.OPENAI_MODEL, store);
+const design = new OpenAIDesignStudio(openai, config.OPENAI_IMAGE_MODEL, store);
+const messenger = new LinqMessenger(createLinq(config.LINQ_API_KEY || 'sandbox-disabled', config.LINQ_WEBHOOK_SECRET), store);
+const worker = new Worker(store, agent, messenger, logger, config.WORKER_POLL_MS, config.MESSAGING_MODE, design, config.WORKER_CONCURRENCY);
 const server = createApp(config, store).listen(config.PORT, '0.0.0.0', () => {
   logger.info({ port: config.PORT, mode: config.MESSAGING_MODE, model: config.OPENAI_MODEL, imageModel: config.OPENAI_IMAGE_MODEL }, 'Server listening');
   worker.start();
