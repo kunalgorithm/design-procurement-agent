@@ -67,6 +67,8 @@ test('a photo anywhere after the checkpoint requires another final check', () =>
   ] });
   ctx.messages.at(-1)!.seq = '4'; out.intakeConfirmation = { action: 'confirm', messageId: ctx.messages.at(-1)!.id };
   assert.equal(validateDecision(out, ctx).handoff, null);
+  ctx.referenceMessages = ctx.messages.splice(1, 1);
+  assert.equal(validateDecision(out, ctx).handoff, null, 'Older uploads remain relevant after the text history window rolls over');
 });
 
 test('later revisions do not repeat first-design intake and checkpoint retries keep one question', () => {

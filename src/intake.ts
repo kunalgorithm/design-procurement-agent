@@ -34,6 +34,7 @@ export function validateInitialIntake(decision: Decision, context: AgentContext,
     && !missingIntakeQuestion(context.conversation.brief)
     && latestUser?.id === action.messageId && latestUser.conversation_id === context.conversation.id
     && latestUser.text.trim() && BigInt(latestUser.seq) > BigInt(checkpoint.seq)
-    && !context.messages.some((message) => message.role === 'user' && BigInt(message.seq) > BigInt(checkpoint.seq) && message.attachments.length);
+    && ![...context.messages, ...context.referenceMessages ?? []].some((message) => message.role === 'user'
+      && BigInt(message.seq) > BigInt(checkpoint.seq) && message.attachments.length);
   return confirmed ? decision : ask(decision);
 }
