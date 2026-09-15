@@ -1,6 +1,5 @@
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router';
-import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Slots } from '@/components/landing-page/types';
 
@@ -38,71 +37,83 @@ const renderDocument = (doc: any, isBlack: boolean, contentClassName?: string) =
 };
 
 export const BannerComponent = ({ className, contentClassName, data, isBlack, showInColumns }: BannerProps) => {
-  const reducedMotion = useReducedMotion();
   const navigate = useNavigate();
   const bannerContent = data.items[0];
   const isSignupAction = bannerContent.actionUrl === '/signup';
 
   return (
-    <motion.div initial={reducedMotion ? false : 'hidden'} animate="visible" variants={variants}>
+    <motion.div initial="hidden" animate="visible" variants={variants}>
       <div className={cn('w-full', isBlack ? 'bg-black-700' : 'bg-black-100', className)}>
         <div
           className={cn(
-            'form-container flex flex-col items-center gap-y-8 py-14 text-center md:py-20',
+            'mx-auto flex w-full max-w-7xl flex-col items-center gap-y-8 px-14 py-20 text-center sm:px-36 sm:py-44 md:px-56',
             {
-              'items-start text-left [&>div]:max-w-2xl':
+              'justify-between gap-x-6 md:flex-row md:px-10 lg:px-52 xl:justify-center xl:gap-x-16 xl:px-0 [&>div]:max-w-96 [&>div]:text-left':
                 showInColumns,
             },
           )}
         >
-          <div className="flex max-w-2xl flex-col">
+          <div className="flex flex-col">
             {bannerContent.description && (
               <p className={cn('mb-2 text-base text-black-700', { 'text-black-50': isBlack })}>
                 {bannerContent.description}
               </p>
             )}
-            <h2
+            <h6
               className={cn(
-                'text-2xl leading-snug text-black-700 md:text-3xl',
+                'leading-relaxed text-black-700 md:text-3xl md:leading-relaxed',
                 { 'text-white': isBlack },
                 { 'text-3xl': showInColumns },
               )}
             >
               {bannerContent.slotTitle}
-            </h2>
+            </h6>
             {renderDocument(bannerContent.markdown?.json, !!isBlack, contentClassName)}
             {bannerContent.actionText &&
               (isSignupAction ? (
                 <button
                   onClick={() => navigate('/signup')}
                   className={cn(
-                    'form-button mt-6 self-start',
-                    isBlack && 'form-button-light',
+                    'mt-6 inline-flex items-center justify-center h-9 px-4 py-2 rounded-xs text-sm font-light capitalize transition-colors self-start',
+                    isBlack
+                      ? 'bg-secondary text-secondary-foreground hover:bg-secondary-hover focus-visible:bg-secondary-hover active:bg-secondary/90'
+                      : 'bg-primary text-primary-foreground hover:bg-primary-hover focus-visible:bg-primary-hover active:bg-primary/90',
                   )}
                 >
                   {bannerContent.actionText}
-                  <ArrowRight size={18} aria-hidden="true" />
                 </button>
               ) : (
                 <a
                   href={bannerContent.actionUrl ?? undefined}
                   className={cn(
-                    'form-button mt-6 self-start',
-                    isBlack && 'form-button-light',
+                    'mt-6 inline-flex items-center justify-center h-9 px-4 py-2 rounded-xs text-sm font-light capitalize transition-colors self-start',
+                    isBlack
+                      ? 'bg-secondary text-secondary-foreground hover:bg-secondary-hover focus-visible:bg-secondary-hover active:bg-secondary/90'
+                      : 'bg-primary text-primary-foreground hover:bg-primary-hover focus-visible:bg-primary-hover active:bg-primary/90',
                   )}
                 >
                   {bannerContent.actionText}
-                  <ArrowRight size={18} aria-hidden="true" />
                 </a>
               ))}
           </div>
           {bannerContent.photosCollection.items.length > 0 && (
-            <div className="grid w-full max-w-5xl grid-cols-2 items-center gap-x-8 gap-y-6 sm:grid-cols-4 lg:grid-cols-7">
-              {bannerContent.photosCollection.items.map((image) => (
-                <div key={image.title} className="flex h-10 min-w-0 justify-center">
-                  <img src={image.url} alt={image.title} className="h-full w-full max-w-32 object-contain" />
+            <div className="flex w-full flex-col">
+              <div className="mb-4 flex flex-col justify-center gap-4 md:flex-row">
+                {bannerContent.photosCollection.items.slice(0, 5).map((image) => (
+                  <div key={image.title} className="relative h-12 w-full">
+                    <img src={image.url} alt={image.title} className="h-full w-full object-contain" />
+                  </div>
+                ))}
+              </div>
+              {bannerContent.photosCollection.items.length > 5 && (
+                <div className="flex flex-col justify-center gap-4 md:flex-row">
+                  {bannerContent.photosCollection.items.slice(5).map((image) => (
+                    <div key={image.title} className="relative h-12 w-full md:w-1/5">
+                      <img src={image.url} alt={image.title} className="h-full w-full object-contain" />
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>

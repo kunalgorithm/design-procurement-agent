@@ -1,4 +1,4 @@
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import type { Slots } from '@/components/landing-page/types';
 
@@ -28,42 +28,41 @@ const renderDocument = (doc: any) => {
 };
 
 export const SectionContent = ({ className, contentClassName, imgClassName, data }: SectionContentProps) => {
-  const reducedMotion = useReducedMotion();
   const sectionContent = data.items?.[0];
   const isVideo = sectionContent.photosCollection?.items?.[0]?.contentType?.includes('video');
 
   return (
     <motion.div
-      initial={reducedMotion ? false : 'hidden'}
+      initial="hidden"
       animate="visible"
       variants={variants}
-      className={className}
+      className={cn('lg:grid lg:grid-cols-12', className)}
     >
       <div
-        className={cn('form-container flex flex-col md:flex-row', {
+        className={cn('lg:col-span-10 lg:col-start-2 mx-auto flex w-full max-w-screen-xl flex-col md:flex-row', {
           'md:flex-row-reverse': !!sectionContent.isLeft,
         })}
       >
         <div
           className={cn(
-            'flex w-full min-w-0 flex-col justify-center px-6 py-10 md:w-1/2 md:p-10 lg:p-16',
+            'flex w-full flex-col justify-center p-8 sm:px-32 sm:py-20 md:w-1/2 md:px-16 md:py-8 lg:px-20 xl:px-32',
             contentClassName,
           )}
         >
-          <h2 className="text-2xl leading-tight text-black-700 md:text-3xl">{sectionContent.slotTitle}</h2>
+          <h4 className="leading-9 text-black-700 max-sm:text-2xl md:leading-normal">{sectionContent.slotTitle}</h4>
           {renderDocument(sectionContent.markdown?.json)}
           {sectionContent.actionText && sectionContent.actionUrl && (
             <div className="mt-14">
               <a
                 href={sectionContent.actionUrl}
-                className="form-button"
+                className="inline-flex items-center justify-center h-9 w-full sm:w-max px-4 py-2 rounded-xs text-sm font-light capitalize bg-primary text-primary-foreground hover:bg-primary-hover focus-visible:bg-primary-hover active:bg-primary/90 transition-colors"
               >
                 {sectionContent.actionText}
               </a>
             </div>
           )}
         </div>
-        <div className="min-w-0 w-full md:w-1/2">
+        <div className="w-full md:w-1/2">
           {sectionContent.photosCollection?.items?.[0] && (
             <>
               {isVideo ? (
@@ -79,7 +78,6 @@ export const SectionContent = ({ className, contentClassName, imgClassName, data
                 </video>
               ) : (
                 <img
-                  loading="lazy"
                   src={sectionContent.photosCollection.items[0].url}
                   alt={sectionContent.photosCollection.items[0].title}
                   className={cn('aspect-[9/10] w-full object-cover object-center md:object-contain', imgClassName)}

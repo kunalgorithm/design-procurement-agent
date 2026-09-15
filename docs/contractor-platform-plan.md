@@ -8,13 +8,13 @@ FORM helps contractors and small architecture practices move a kitchen job from 
 
 This is an independent product. No Handoff connection or contractor subscription is part of the plan. Materials sourcing may later support the business, but purchases are optional and the free workflow must remain useful when a contractor buys elsewhere.
 
-The landing page leads with **design support for the next kitchen bid**, with a brief mention of estimates, changes and follow-ups to come. Deliver that broader direction in the stages below. Keep availability accurate in onboarding and agent replies while capabilities roll out. An agent must never claim it created, sent or completed an artifact when it only saved an operator handoff.
+The proposed positioning leads with **design support for the next kitchen bid**, with a brief mention of estimates, changes and follow-ups to come. Deliver that broader direction in the stages below. Keep availability accurate in onboarding and agent replies while capabilities roll out. An agent must never claim it created, sent or completed an artifact when it only saved an operator handoff.
 
-## Landing-page promise and conversion
+## Website proposal
 
-Primary CTA: **Get design support for my next bid**. Compact navigation: **Get started**. The public page stays design-led and visual; free/pilot language is not its positioning. Signup returns FORM’s number and a contact card; the contractor initiates the first text. Keep this immediate action concrete while explaining the broader pilot benefits.
+The website has been restored to its original version at `ed86094`. Proposed copy substitutions are listed separately in [targeted website copy edits](targeted-website-copy-edits.md); none are applied. Keep the original layout, fonts, widths, sections, form structure and visual assets.
 
-The copy follows the benefit → mechanism → specific next action structure in [Julian Shapiro’s landing-page guide](https://www.julian.com/guide/startup/landing-pages). The page restores the FORM Kitchens press logos and historical project experience, removes unsupported savings/commission claims, and keeps the future tools to a brief mention. Judge conversion by qualified contractors starting a real project, not button clicks alone.
+The selected primary CTA is **Get design support for my next bid**. The proposal follows the benefit → mechanism → specific next action structure in [Julian Shapiro’s landing-page guide](https://www.julian.com/guide/startup/landing-pages). The broader product capabilities below remain implementation plans, not current signup deliverables. Judge conversion by qualified contractors starting a real project, not button clicks alone.
 
 ## Current implementation and gaps
 

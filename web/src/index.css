@@ -60,8 +60,6 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --form-page-width: 1280px;
-  --form-page-gutter: clamp(20px, 4vw, 48px);
   --background: oklch(0.9821 0 0);
   --foreground: oklch(0.2435 0 0);
 
@@ -124,62 +122,6 @@
   --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
-}
-
-.form-container {
-  width: calc(100% - 2 * var(--form-page-gutter));
-  max-width: var(--form-page-width);
-  margin-inline: auto;
-}
-
-.form-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  min-height: 48px;
-  max-width: 100%;
-  padding: 13px 22px;
-  border-radius: 3px;
-  background: #344432;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 1.4;
-  text-decoration: none;
-  text-align: center;
-  transition: background 150ms;
-}
-.form-button > svg { flex-shrink: 0; }
-
-.form-button:hover { background: #273624; }
-.form-button:focus-visible { outline: 2px solid #567354; outline-offset: 4px; }
-.form-button-light { background: #f4f2ec; color: #282a25; }
-.form-button-light:hover { background: #fff; }
-.form-navbar-inner { min-height: 96px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-.form-brand { display: flex; align-items: center; gap: 26px; }
-.form-brand-label { border-left: 1px solid #d8d7cf; padding-left: 26px; color: #62685c; font-size: 10px; letter-spacing: 1.6px; }
-.form-hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: clamp(40px, 6vw, 88px); }
-.form-hero-copy { padding-block: 72px; }
-.form-hero-copy h1 { max-width: 19ch; font-size: clamp(38px, 3.8vw, 54px); line-height: 1.08; letter-spacing: -1.7px; text-wrap: balance; }
-.form-hero-copy > p { max-width: 47ch; font-size: 17px; line-height: 1.7; }
-.form-hero-note { margin-top: 14px; color: #d6d9ce; font-size: 12px !important; }
-.form-hero-copy > .form-hero-eyebrow { font-size: 11px; letter-spacing: .18em; }
-.form-hero-image { width: 100%; aspect-ratio: 1 / 1.12; max-height: 660px; object-fit: cover; }
-
-@media (max-width: 800px) {
-  .form-navbar-inner { min-height: 80px; }
-  .form-brand-label { display: none; }
-  .form-navbar-inner .form-button { min-height: 44px; padding: 11px 14px; font-size: 12px; }
-  .form-hero-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .form-hero-copy { padding-block: 48px 40px; }
-  .form-hero-copy h1 { max-width: 16ch; font-size: clamp(36px, 7vw, 52px); letter-spacing: -1.1px; }
-  .form-hero-image { aspect-ratio: 4 / 3; max-height: 420px; }
-}
-
-@media (max-width: 400px) {
-  .form-navbar-inner .form-button { white-space: nowrap; padding-inline: 12px; }
-  .form-navbar-inner .form-button svg { display: none; }
 }
 
 .dark {
