@@ -11,10 +11,10 @@ function escapeVCard(value: string) {
 export function createFormVCard(agent: DesignAgentContact) {
   const lines = [
     'BEGIN:VCARD', 'VERSION:3.0', `FN:${escapeVCard(agent.name)}`, `N:;${escapeVCard(agent.name)};;;`,
-    'ORG:FORM', 'TITLE:Your design agent', `TEL;TYPE=CELL,WORK:${escapeVCard(agent.phone)}`,
+    'ORG:FORM', 'TITLE:Your AI kitchen design agent', `TEL;TYPE=CELL,WORK:${escapeVCard(agent.phone)}`,
     ...(agent.email ? [`EMAIL;TYPE=WORK:${escapeVCard(agent.email)}`] : []),
     ...(agent.website ? [`URL:${escapeVCard(agent.website)}`] : []),
-    'NOTE:Your FORM design agent. Text us to get started on your next project.', 'END:VCARD',
+    'NOTE:Kitchen design support for contractors. Text kitchen photos and design ideas to FORM. For shared design feedback start an iMessage group with your homeowner first.', 'END:VCARD',
   ];
   // vCard 3.0 requires CRLF and folding at 75 octets (including continuation whitespace).
   return lines.map((line) => {

@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { CONTRACTOR_LANDING_DATA } from '@/components/landing-page/landing-data-contractor';
+import { ProjectQuestions } from '@/components/landing-page/ProjectQuestions';
+import { ContractorTools, TextWorkflow } from '@/components/landing-page/ContractorTools';
 
 import {
   BannerComponent,
@@ -12,45 +14,35 @@ import {
 
 export function HomePage() {
   const formDesignLandingData = CONTRACTOR_LANDING_DATA;
-  useEffect(() => { document.title = 'FORM for Contractors — Win more bids'; }, []);
+  useEffect(() => {
+    document.title = 'FORM for Contractors — Win more kitchen jobs';
+    document.querySelector('meta[name="description"]')?.setAttribute('content', 'Win more kitchen jobs. Spend less time on admin. Join the free FORM contractor pilot for kitchen design, estimates, and job admin by text.');
+  }, []);
 
   return (
     <>
       <Navbar />
-      <div style={{ backgroundColor: 'hsl(var(--black-50))' }}>
+      <main style={{ backgroundColor: 'hsl(var(--black-50))' }}>
         <HeaderMediaComponent data={formDesignLandingData.items[0].contentSlotsCollection} isBlack />
         <BannerComponent className="mt-0" data={formDesignLandingData.items[1].contentSlotsCollection} />
+        <ContractorTools />
         <HowItWorksCards data={formDesignLandingData.items[3].contentSlotsCollection} />
         <BannerComponent className="mt-0" data={formDesignLandingData.items[4].contentSlotsCollection} isBlack />
         <SectionContent
-          className="mt-32 px-4 lg:px-0"
+          className="mt-16 md:mt-24"
           contentClassName="bg-black-100"
           imgClassName="md:object-cover"
           data={formDesignLandingData.items[5].contentSlotsCollection}
         />
         <SectionContent
-          className="mt-32 px-4 lg:px-0"
+          className="mt-16 md:mt-24"
           contentClassName="bg-black-100"
           imgClassName="md:object-cover"
           data={formDesignLandingData.items[6].contentSlotsCollection}
         />
-        <SectionContent
-          className="mt-32 px-4 lg:px-0"
-          imgClassName="h-[300px] md:h-[500px] md:object-cover"
-          data={formDesignLandingData.items[7].contentSlotsCollection}
-        />
-        <SectionContent
-          className="mt-32 px-4 lg:px-0"
-          contentClassName="bg-black-100"
-          imgClassName="aspect-[3/2] md:object-cover"
-          data={formDesignLandingData.items[8].contentSlotsCollection}
-        />
-        <SectionContent
-          className="mt-32 px-4 lg:px-0"
-          imgClassName="h-[300px] md:h-[500px] md:object-cover"
-          data={formDesignLandingData.items[9].contentSlotsCollection}
-        />
-        <div className="md:mx-16">
+        <TextWorkflow />
+        <ProjectQuestions />
+        <div>
           <BannerComponent
             className="mt-16"
             contentClassName="text-base leading-7 font-thin mt-4"
@@ -59,7 +51,7 @@ export function HomePage() {
             isBlack
           />
         </div>
-      </div>
+      </main>
       <Footer />
     </>
   );

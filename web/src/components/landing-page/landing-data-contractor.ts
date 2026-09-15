@@ -1,7 +1,7 @@
 export const CONTRACTOR_LANDING_DATA = {
   items: [
     {
-      moduleTitle: 'Contractors: Win More Bids With Free Professional Design.',
+      moduleTitle: 'Win more kitchen jobs. Spend less time on admin.',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -17,7 +17,7 @@ export const CONTRACTOR_LANDING_DATA = {
                         data: {},
                         marks: [],
                         value:
-                          '3D designs + priced materials list in days, not weeks. Earn 5% referral on every project. Design + procurement coordinated in one place. No apps, no complexity, no upfront cost.',
+                          'Kitchen design, estimates, and job admin by text. Join the free FORM contractor pilot to help clients picture the result and keep your next bid moving.',
                         nodeType: 'text',
                       },
                     ],
@@ -28,10 +28,10 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Contractors: Win More Bids With Free Professional Design.',
-            actionText: 'Get started',
+            slotTitle: 'Win more kitchen jobs.\nSpend less time on admin.',
+            actionText: 'Get design support for my next bid',
             actionUrl: '/signup',
-            description: null,
+            description: 'FREE CONTRACTOR PILOT',
             isLeft: null,
             meta: null,
             photosCollection: {
@@ -48,14 +48,14 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Built on Real Kitchen Design Expertise',
+      moduleTitle: 'A foundation in kitchen design',
       contentSlotsCollection: {
         total: 1,
         items: [
           {
             markdown: null,
             video: null,
-            slotTitle: 'Built by the team behind FORM Kitchens, with 2,000+ projects delivered and featured in:',
+            slotTitle: 'Previous FORM Kitchens projects and design coverage',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -64,39 +64,14 @@ export const CONTRACTOR_LANDING_DATA = {
             photosCollection: {
               items: [
                 {
-                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/5VI8ysidSMSWSMg7vqXrg8/5d659f4d6b7b58dc1e166fc3ec5db4ee/elleDecor.svg',
-                  contentType: 'image/svg+xml',
-                  title: 'elleDecor',
-                },
-                {
                   url: 'https://images.ctfassets.net/o6pn4lhbgy5o/1yk5gPfnW9wmt6V24vd3kn/8169363529db71d0263e22a6675e714a/goodHousekeeping.svg',
                   contentType: 'image/svg+xml',
-                  title: 'goodHousekeeping',
-                },
-                {
-                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/GW3N7sIcte2MMzhmqsk6v/c8efbc7d79a9adaeb99263a6b9d34dfd/domino.svg',
-                  contentType: 'image/svg+xml',
-                  title: 'domino',
+                  title: 'Good Housekeeping — previous FORM Kitchens coverage',
                 },
                 {
                   url: 'https://images.ctfassets.net/o6pn4lhbgy5o/2aFR5SBJWdKSyAXTiaMiEc/9d95f9881bbe5bf3b6f53fffc8e8a6f3/houzz.svg',
                   contentType: 'image/svg+xml',
-                  title: 'houzz',
-                },
-                {
-                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/5urDJABweCYdaz7NwJdrLL/57d3b0a8fa78a9d017ddd74bf073daec/architectsArtisans.svg',
-                  contentType: 'image/svg+xml',
-                  title: 'architectsArtisans',
-                },
-                {
-                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/6sFmtEu1vXdc1PcsZZeCYq/4385766cc642e8cc891ae3f9a3bed712/betterHomesGardens.svg',
-                  contentType: 'image/svg+xml',
-                  title: 'betterHomesGardens',
-                },
-                {
-                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/6yuIDIpra14A4MRKI2Pi1X/a3b928a57411d212fdd3afe61352e9d9/businessOfHome.svg',
-                  contentType: 'image/svg+xml',
-                  title: 'businessOfHome',
+                  title: 'Houzz — previous FORM Kitchens projects',
                 },
               ],
             },
@@ -105,7 +80,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Planner video',
+      moduleTitle: 'FORM Kitchens design heritage',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -114,14 +89,14 @@ export const CONTRACTOR_LANDING_DATA = {
               items: [],
             },
             markdown: null,
-            slotTitle: 'Planner video',
+            slotTitle: 'A look at FORM Kitchens’ earlier design tools',
             actionText: null,
             actionUrl: null,
             description: null,
             isLeft: null,
             meta: null,
             video: {
-              title: 'FORM Design How It Works',
+              title: 'FORM Kitchens earlier design tools',
               embedUrl:
                 'https://player.vimeo.com/video/1056165921?h=c14ba0c160&amp;badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479',
             },
@@ -130,7 +105,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: '3 Simple Steps',
+      moduleTitle: 'Put design to work on your next bid',
       contentSlotsCollection: {
         total: 4,
         items: [
@@ -140,8 +115,8 @@ export const CONTRACTOR_LANDING_DATA = {
             },
             markdown: null,
             video: null,
-            slotTitle: '3 Simple Steps',
-            actionText: 'Get started',
+            slotTitle: 'Put design to work on your next bid',
+            actionText: 'Get design support for my next bid',
             actionUrl: '/signup',
             description: null,
             isLeft: null,
@@ -160,7 +135,7 @@ export const CONTRACTOR_LANDING_DATA = {
                       {
                         nodeType: 'text',
                         value:
-                          'Connect with your FORM design agent in Messages. Share your project details and we handle the design intake.',
+                          'Join for free to get FORM’s number. Start an iMessage group with your homeowner, or text FORM directly. Share kitchen photos in that conversation.',
                         marks: [],
                         data: {},
                       },
@@ -170,7 +145,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Meet Your Design Agent',
+            slotTitle: 'Start with a few photos',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -199,7 +174,7 @@ export const CONTRACTOR_LANDING_DATA = {
                       {
                         nodeType: 'text',
                         value:
-                          'We design and gather quotes across our supplier network for cabinets, flooring, windows, doors, fixtures, and more.',
+                          'FORM asks about the space and creates kitchen design images. In a shared chat, your homeowner can give feedback as you refine the direction together.',
                         marks: [],
                         data: {},
                       },
@@ -209,7 +184,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Get Design + Pricing',
+            slotTitle: 'Explore the possibilities',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -238,7 +213,7 @@ export const CONTRACTOR_LANDING_DATA = {
                       {
                         nodeType: 'text',
                         value:
-                          'Outshine competitors with professional proposals and better pricing on materials—typically 20% below retail.',
+                          'When your homeowner approves a design, FORM saves that image and the agreed details. You have a shared direction for planning the next steps.',
                         marks: [],
                         data: {},
                       },
@@ -248,7 +223,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Win The Job',
+            slotTitle: 'Save the decisions',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -268,7 +243,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Why Trade Professionals Love FORM',
+      moduleTitle: 'Free design support. More time for the job.',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -278,7 +253,7 @@ export const CONTRACTOR_LANDING_DATA = {
             },
             markdown: null,
             video: null,
-            slotTitle: 'Why Trade Professionals Love FORM',
+            slotTitle: 'Free design support. More time for the job.',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -289,7 +264,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Close More Business',
+      moduleTitle: 'Give your bid something clients can see',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -306,7 +281,7 @@ export const CONTRACTOR_LANDING_DATA = {
                       {
                         nodeType: 'text',
                         value:
-                          "Deals stall when clients can't visualize the project. Fast professional 3D designs keep momentum going while competitors lose bids to indecision.",
+                          'Help homeowners picture the result before they choose a contractor. Turn their kitchen photos and ideas into visual concepts you can discuss together.',
                         marks: [],
                         data: {},
                       },
@@ -316,7 +291,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Close More Business',
+            slotTitle: 'Give your bid something clients can see',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -336,7 +311,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Better Prices That Win Bids',
+      moduleTitle: 'Spend less time chasing design decisions',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -352,7 +327,7 @@ export const CONTRACTOR_LANDING_DATA = {
                         data: {},
                         marks: [],
                         value:
-                          'We compare pricing across our supplier network to get you the best rates on cabinets, flooring, windows, doors, fixtures, and more—typically 20% below retail.',
+                          'FORM asks design questions and works through feedback in the project chat. Your client can explore the details while you focus on moving the job forward.',
                         nodeType: 'text',
                       },
                     ],
@@ -363,7 +338,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Better Prices That Win Bids',
+            slotTitle: 'Spend less time chasing design decisions',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -372,9 +347,9 @@ export const CONTRACTOR_LANDING_DATA = {
             photosCollection: {
               items: [
                 {
-                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/2oVXrk8A2zGxUmZBGZYwvX/ac17725ddaea2c43830b2b48a7f8dfba/computer-catalog.png',
-                  contentType: 'image/png',
-                  title: 'computer-catalog',
+                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/7JGOslOaPo0lPlQzCHBRRA/62e38192ebd276d6e36be616fffa98f0/HeroFormDesign.webp',
+                  contentType: 'image/webp',
+                  title: 'Kitchen design concept',
                 },
               ],
             },
@@ -383,7 +358,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Zero Learning Curve',
+      moduleTitle: 'Design support, one text away',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -399,7 +374,7 @@ export const CONTRACTOR_LANDING_DATA = {
                         data: {},
                         marks: [],
                         value:
-                          'Connect directly in Messages—no new apps to download, no training required. If you can text, you can use FORM.',
+                          'Text FORM directly, or start an iMessage group with your homeowner. Share the project in that conversation so photos, questions, and feedback stay together.',
                         nodeType: 'text',
                       },
                     ],
@@ -410,7 +385,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Zero Learning Curve',
+            slotTitle: 'Design support, one text away',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -430,7 +405,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Coordinated Design & Materials',
+      moduleTitle: 'Keep the client relationship yours',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -446,7 +421,7 @@ export const CONTRACTOR_LANDING_DATA = {
                         data: {},
                         marks: [],
                         value:
-                          'Stop juggling quotes from flooring reps, cabinet dealers, window suppliers, and showrooms. FORM acts as your design and procurement team—coordinating sourcing and pricing across all materials.',
+                          'Bring your homeowner into an iMessage group with FORM. Stay involved in the design and lead the proposal, material checks, and work on site.',
                         nodeType: 'text',
                       },
                     ],
@@ -457,7 +432,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Coordinated Design & Materials',
+            slotTitle: 'Keep the client relationship yours',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -466,9 +441,9 @@ export const CONTRACTOR_LANDING_DATA = {
             photosCollection: {
               items: [
                 {
-                  url: '/customer-success-team.png',
-                  contentType: 'image/png',
-                  title: 'FORM client experience team displayed on a desktop monitor',
+                  url: '/kitchen-sample.jpg',
+                  contentType: 'image/jpeg',
+                  title: 'Kitchen design inspiration',
                 },
               ],
             },
@@ -477,7 +452,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Better Economics for Everyone',
+      moduleTitle: 'Start your proposal with a clearer scope',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -493,7 +468,7 @@ export const CONTRACTOR_LANDING_DATA = {
                         data: {},
                         marks: [],
                         value:
-                          "Our trade-only model is how we deliver better pricing. We aggregate contractor volume for wholesale rates homeowners can't access directly. Contractors earn 5% on every order, clients save 20%, and we avoid retail marketing costs. Everyone wins.",
+                          'Use the approved design and saved selections as a starting point for your proposal. Confirm site measurements, supplier pricing, and order details before purchasing materials.',
                         nodeType: 'text',
                       },
                     ],
@@ -504,7 +479,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Better Economics for Everyone',
+            slotTitle: 'Start your proposal with a clearer scope',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -513,9 +488,9 @@ export const CONTRACTOR_LANDING_DATA = {
             photosCollection: {
               items: [
                 {
-                  url: 'https://images.ctfassets.net/o6pn4lhbgy5o/1SmGld7YG03T8ZtEQn5g48/6feab31aff264abfba348501b778842d/mobile-contr.gif',
-                  contentType: 'image/gif',
-                  title: 'mobile-contr',
+                  url: '/kitchen-sample.jpg',
+                  contentType: 'image/jpeg',
+                  title: 'Kitchen planning reference',
                 },
               ],
             },
@@ -524,7 +499,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Ready to Win More Jobs?',
+      moduleTitle: 'Put FORM to work on your next bid.',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -544,7 +519,7 @@ export const CONTRACTOR_LANDING_DATA = {
                       {
                         nodeType: 'text',
                         value:
-                          'Get started with your FORM design agent in minutes. Share a project and take the next step toward winning the job.',
+                          'Join the free contractor pilot and bring design support to your next bid. Get FORM’s number and start with a photo and a text.',
                         marks: [],
                         data: {},
                       },
@@ -554,8 +529,8 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Ready to Win More Jobs?',
-            actionText: 'Get started',
+            slotTitle: 'Put FORM to work on your next bid.',
+            actionText: 'Get design support for my next bid',
             actionUrl: '/signup',
             description: null,
             isLeft: null,

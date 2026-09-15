@@ -1,4 +1,5 @@
 import type { Slots } from '@/components/landing-page/types';
+import { ArrowRight, Camera, Image, ClipboardCheck } from 'lucide-react';
 
 interface HowItWorksCardsProps {
   data: Slots;
@@ -16,29 +17,27 @@ const renderDocument = (doc: any) => {
 export const HowItWorksCards = ({ data }: HowItWorksCardsProps) => {
   const info = data.items[0];
   const cards = data.items.slice(1);
+  const icons = [Camera, Image, ClipboardCheck];
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-16 md:px-20 md:py-32">
-      <h4 className="mb-4 text-black-700 md:text-4xl">{info.slotTitle}</h4>
+    <section className="form-container flex flex-col py-16 md:py-24" aria-labelledby="how-it-works">
+      <h2 id="how-it-works" className="mb-4 text-3xl text-black-700 md:text-4xl">{info.slotTitle}</h2>
       <p className="text-base font-light leading-7 text-black-600">{info.description}</p>
-      <div className="mt-20 flex flex-col justify-between gap-x-4 gap-y-20 sm:flex-row">
+      <div className="mt-10 grid gap-10 md:grid-cols-3 md:gap-12">
         {cards.map((card, idx) => {
           const content = renderDocument(card.markdown?.json);
+          const Icon = icons[idx] ?? ClipboardCheck;
 
           return (
-            <div key={card.photosCollection.items[0]?.title || idx} className="flex-1">
-              <div className="mb-6">
-                <img
-                  src={card.photosCollection.items[0].url}
-                  alt={card.photosCollection.items[0].title}
-                  className="max-h-[400px] md:max-h-132 w-full object-contain"
-                />
+            <div key={card.slotTitle} className="min-w-0">
+              <div className="mb-7 flex items-center justify-between border-b border-black-300 pb-5">
+                <span className="text-sm text-black-500">0{idx + 1}</span>
+                <Icon size={30} strokeWidth={1.25} aria-hidden="true" />
               </div>
-              <div className="max-w-80 self-center sm:self-auto">
-                <h5 className="mb-4 flex items-center gap-2 border-b border-black-200 pb-2 md:text-3xl">
-                  <span className="text-base font-light text-black-500">{idx + 1}</span>
+              <div>
+                <h3 className="mb-4 text-2xl leading-tight">
                   {card.slotTitle}
-                </h5>
+                </h3>
                 {content}
               </div>
             </div>
@@ -46,11 +45,12 @@ export const HowItWorksCards = ({ data }: HowItWorksCardsProps) => {
         })}
       </div>
       <a
-        className="mt-20 self-center inline-flex items-center justify-center h-9 w-full sm:w-max px-4 py-2 rounded-xs text-sm font-light capitalize bg-primary text-primary-foreground hover:bg-primary-hover focus-visible:bg-primary-hover active:bg-primary/90 transition-colors md:min-w-60"
+        className="form-button mt-12 self-start"
         href={info.actionUrl ?? ''}
       >
         {info.actionText}
+        <ArrowRight size={18} aria-hidden="true" />
       </a>
-    </div>
+    </section>
   );
 };

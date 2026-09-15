@@ -92,3 +92,16 @@ test('FORM contact card contains the exact assigned phone and safe vCard line fo
   for (const line of card.split('\r\n')) assert(Buffer.byteLength(line, 'utf8') <= 75);
   assert(card.endsWith('END:VCARD\r\n'));
 });
+
+test('missing browser pages show the site while API and asset misses stay JSON', async () => {
+  const app = createApp(config, {} as Store);
+  const page = await request(app).get('/missing-page').set('Accept', 'text/html').expect(404);
+  assert.match(page.headers['content-type'] ?? '', /text\/html/);
+  assert.match(page.text, /\/site\/assets\//);
+  for (const path of ['/site/missing.js', '/fonts/missing.woff2', '/missing.png', '/webhooks/missing']) {
+    const response = await request(app).get(path).set('Accept', 'text/html').expect(404);
+    assert.deepEqual(response.body, { error: 'Not found' });
+  }
+  await request(app).get('/missing-page').expect(404, { error: 'Not found' });
+  await request(app).get('/api/missing').expect(401, { error: 'Unauthorized' });
+});

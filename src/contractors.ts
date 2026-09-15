@@ -11,7 +11,7 @@ export function contractorRouter(config: Config, store: Store) {
     limit: 20,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
-    message: { message: 'Too many attempts. Please try again in a few minutes.' },
+    message: { message: 'Too many signup attempts. Please wait up to 15 minutes and try again.' },
   }), async (req, res) => {
     res.set('Cache-Control', 'no-store');
     const parsed = contractorSignupSchema.safeParse(req.body);
@@ -21,7 +21,7 @@ export function contractorRouter(config: Config, store: Store) {
       return;
     }
     if (!config.LINQ_FROM_NUMBER) {
-      res.status(503).json({ message: 'Signup is temporarily unavailable. Please try again soon.' });
+      res.status(503).json({ message: 'Signup is temporarily unavailable. Please try again later.' });
       return;
     }
     const signup = await store.registerContractor(parsed.data, config.LINQ_FROM_NUMBER);

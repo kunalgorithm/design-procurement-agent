@@ -169,7 +169,14 @@ export function createApp(config: Config, store: Store) {
   });
   app.get('/sandbox', (_req, res) => res.sendFile(`${publicDir}/index.html`));
   app.use(express.static(publicDir, { index: false }));
-  app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
+  app.use((req, res) => {
+    if (req.method === 'GET' && req.get('accept')?.includes('text/html')
+      && !/^\/(?:api|webhooks|site|fonts)(?:\/|$)/.test(req.path) && !req.path.split('/').pop()?.includes('.')) {
+      res.status(404).set('Cache-Control', 'no-cache').sendFile(`${publicDir}/site/index.html`);
+      return;
+    }
+    res.status(404).json({ error: 'Not found' });
+  });
   const errors: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Invalid request', fields: error.issues.map((issue) => issue.path.join('.')) }); return;
