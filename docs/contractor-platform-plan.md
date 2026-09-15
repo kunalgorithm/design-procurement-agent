@@ -10,9 +10,9 @@ This is an independent product. No Handoff connection or contractor subscription
 
 The proposed positioning leads with **design support for the next kitchen bid**, with a brief mention of estimates, changes and follow-ups to come. Deliver that broader direction in the stages below. Keep availability accurate in onboarding and agent replies while capabilities roll out. An agent must never claim it created, sent or completed an artifact when it only saved an operator handoff.
 
-## Website proposal
+## Targeted website copy
 
-The website has been restored to its original version at `ed86094`. Proposed copy substitutions are listed separately in [targeted website copy edits](targeted-website-copy-edits.md); none are applied. Keep the original layout, fonts, widths, sections, form structure and visual assets.
+The website keeps the original layout, fonts, widths, sections, form structure and visual assets from `ed86094`. The eight text-only edit groups in [targeted website copy edits](targeted-website-copy-edits.md) were applied on 15 September 2026. The broader product features in this plan remain unimplemented.
 
 The selected primary CTA is **Get design support for my next bid**. The proposal follows the benefit → mechanism → specific next action structure in [Julian Shapiro’s landing-page guide](https://www.julian.com/guide/startup/landing-pages). The broader product capabilities below remain implementation plans, not current signup deliverables. Judge conversion by qualified contractors starting a real project, not button clicks alone.
 

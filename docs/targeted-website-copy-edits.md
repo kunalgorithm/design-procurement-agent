@@ -1,10 +1,10 @@
 # Targeted website copy edits
 
-**Proposed only; not applied.** Based on the original website at commit `ed86094`. Keep its layout, fonts, widths, form structure, images, and all seven media logos. These are substitutions inside existing elements, with no new sections.
+**Applied on 15 September 2026.** All eight copy-edit groups below are implemented on top of the original website at commit `ed86094`. Keep its layout, fonts, widths, form structure, images, and all seven media logos. These are substitutions inside existing elements, with no new sections.
 
-Current paragraph excerpts below identify the existing text to replace; proposed paragraphs are complete.
+Original paragraph excerpts below identify the replaced text; replacement paragraphs are complete.
 
-| Priority / location | Current | Proposed | Why |
+| Priority / location | Original | Applied replacement | Why |
 |---|---|---|---|
 | 1. Hero heading | “Contractors: Win More Bids With Free Professional Design.” | **Win more kitchen jobs with better design.** | Leads with the contractor benefit and restores the design focus. |
 | 2. Hero paragraph | “3D designs + priced materials list in days, not weeks. Earn 5% referral on every project. Design + procurement coordinated in one place. No apps, no complexity, no upfront cost.” | **Your AI kitchen design assistant, one text away. Help clients picture the result, choose the details, and move forward with your bid.** | Explains the offer in fewer words; replaces the unverified referral and timing claims. |
@@ -15,10 +15,10 @@ Current paragraph excerpts below identify the existing text to replace; proposed
 | 7. Existing “Coordinated Design & Materials” section | “Stop juggling quotes from flooring reps, cabinet dealers, window suppliers, and showrooms. FORM acts as your design and procurement team—coordinating sourcing and pricing across all materials.” | Heading: **Design support and the next steps**. Body: **Kitchen design today, with estimates, scope changes, and job follow-ups by text planned next. You lead the client relationship and the work.** | Gives the broader vision one short paragraph, with its future status clear. |
 | 8. Signup introduction and submit button | “Tell us a little about yourself. We’ll connect you with your FORM design agent.” / “Meet my design agent” | **Share your details to get FORM’s number, then start your kitchen project by text.** / **Get design support for my next bid** | Describes the actual phone handoff without changing the form. |
 
-Suggested first pass: the hero, selected CTA, and signup introduction (edits 1–3 and 8). The remaining replacements can be reviewed individually. No pilot branding, repeated free messaging, FAQ, added feature blocks, or redesign.
+Implementation changes only the two source files listed below, using text substitutions. No pilot branding, repeated free messaging, FAQ, added feature blocks, or redesign.
 
 ## File locations
 
 - Edits 1–7: `web/src/components/landing-page/landing-data-contractor.ts`.
 - Edit 8: `web/src/pages/contractorSignup.tsx`.
-- No changes proposed to styles, image assets, components, routes, validation, or backend behavior.
+- No changes to styles, image assets, component structure, routes, validation, or backend behavior.

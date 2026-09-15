@@ -1,7 +1,7 @@
 export const CONTRACTOR_LANDING_DATA = {
   items: [
     {
-      moduleTitle: 'Contractors: Win More Bids With Free Professional Design.',
+      moduleTitle: 'Win more kitchen jobs with better design.',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -17,7 +17,7 @@ export const CONTRACTOR_LANDING_DATA = {
                         data: {},
                         marks: [],
                         value:
-                          '3D designs + priced materials list in days, not weeks. Earn 5% referral on every project. Design + procurement coordinated in one place. No apps, no complexity, no upfront cost.',
+                          'Your AI kitchen design assistant, one text away. Help clients picture the result, choose the details, and move forward with your bid.',
                         nodeType: 'text',
                       },
                     ],
@@ -28,8 +28,8 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Contractors: Win More Bids With Free Professional Design.',
-            actionText: 'Get started',
+            slotTitle: 'Win more kitchen jobs with better design.',
+            actionText: 'Get design support for my next bid',
             actionUrl: '/signup',
             description: null,
             isLeft: null,
@@ -55,7 +55,7 @@ export const CONTRACTOR_LANDING_DATA = {
           {
             markdown: null,
             video: null,
-            slotTitle: 'Built by the team behind FORM Kitchens, with 2,000+ projects delivered and featured in:',
+            slotTitle: 'Experience from over 2,000 FORM Kitchens projects. As featured in:',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -141,7 +141,7 @@ export const CONTRACTOR_LANDING_DATA = {
             markdown: null,
             video: null,
             slotTitle: '3 Simple Steps',
-            actionText: 'Get started',
+            actionText: 'Get design support for my next bid',
             actionUrl: '/signup',
             description: null,
             isLeft: null,
@@ -199,7 +199,7 @@ export const CONTRACTOR_LANDING_DATA = {
                       {
                         nodeType: 'text',
                         value:
-                          'We design and gather quotes across our supplier network for cabinets, flooring, windows, doors, fixtures, and more.',
+                          'Explore kitchen designs and refine the details with your client.',
                         marks: [],
                         data: {},
                       },
@@ -209,7 +209,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Get Design + Pricing',
+            slotTitle: 'Get Design + Selections',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -238,7 +238,7 @@ export const CONTRACTOR_LANDING_DATA = {
                       {
                         nodeType: 'text',
                         value:
-                          'Outshine competitors with professional proposals and better pricing on materials—typically 20% below retail.',
+                          'Give clients a design they can picture and a clearer reason to choose you.',
                         marks: [],
                         data: {},
                       },
@@ -336,7 +336,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Better Prices That Win Bids',
+      moduleTitle: 'A clearer scope for your bid',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -352,7 +352,7 @@ export const CONTRACTOR_LANDING_DATA = {
                         data: {},
                         marks: [],
                         value:
-                          'We compare pricing across our supplier network to get you the best rates on cabinets, flooring, windows, doors, fixtures, and more—typically 20% below retail.',
+                          'Start with an approved design and organized selections, then confirm measurements and supplier prices for your proposal.',
                         nodeType: 'text',
                       },
                     ],
@@ -363,7 +363,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Better Prices That Win Bids',
+            slotTitle: 'A clearer scope for your bid',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -430,7 +430,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Coordinated Design & Materials',
+      moduleTitle: 'Design support and the next steps',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -446,7 +446,7 @@ export const CONTRACTOR_LANDING_DATA = {
                         data: {},
                         marks: [],
                         value:
-                          'Stop juggling quotes from flooring reps, cabinet dealers, window suppliers, and showrooms. FORM acts as your design and procurement team—coordinating sourcing and pricing across all materials.',
+                          'Kitchen design today, with estimates, scope changes, and job follow-ups by text planned next. You lead the client relationship and the work.',
                         nodeType: 'text',
                       },
                     ],
@@ -457,7 +457,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Coordinated Design & Materials',
+            slotTitle: 'Design support and the next steps',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -477,7 +477,7 @@ export const CONTRACTOR_LANDING_DATA = {
       },
     },
     {
-      moduleTitle: 'Better Economics for Everyone',
+      moduleTitle: 'More time for the job',
       contentSlotsCollection: {
         total: 1,
         items: [
@@ -493,7 +493,7 @@ export const CONTRACTOR_LANDING_DATA = {
                         data: {},
                         marks: [],
                         value:
-                          "Our trade-only model is how we deliver better pricing. We aggregate contractor volume for wholesale rates homeowners can't access directly. Contractors earn 5% on every order, clients save 20%, and we avoid retail marketing costs. Everyone wins.",
+                          "FORM works through design questions and client feedback, helping you keep decisions moving while you focus on the build.",
                         nodeType: 'text',
                       },
                     ],
@@ -504,7 +504,7 @@ export const CONTRACTOR_LANDING_DATA = {
               },
             },
             video: null,
-            slotTitle: 'Better Economics for Everyone',
+            slotTitle: 'More time for the job',
             actionText: null,
             actionUrl: null,
             description: null,
@@ -555,7 +555,7 @@ export const CONTRACTOR_LANDING_DATA = {
             },
             video: null,
             slotTitle: 'Ready to Win More Jobs?',
-            actionText: 'Get started',
+            actionText: 'Get design support for my next bid',
             actionUrl: '/signup',
             description: null,
             isLeft: null,
