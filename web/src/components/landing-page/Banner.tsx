@@ -97,23 +97,12 @@ export const BannerComponent = ({ className, contentClassName, data, isBlack, sh
               ))}
           </div>
           {bannerContent.photosCollection.items.length > 0 && (
-            <div className="flex w-full max-w-lg flex-col">
-              <div className="mb-4 flex justify-center gap-8">
-                {bannerContent.photosCollection.items.slice(0, 5).map((image) => (
-                  <div key={image.title} className="relative h-12 w-full">
-                    <img src={image.url} alt={image.title} className="h-full w-full object-contain" />
-                  </div>
-                ))}
-              </div>
-              {bannerContent.photosCollection.items.length > 5 && (
-                <div className="flex flex-col justify-center gap-4 md:flex-row">
-                  {bannerContent.photosCollection.items.slice(5).map((image) => (
-                    <div key={image.title} className="relative h-12 w-full md:w-1/5">
-                      <img src={image.url} alt={image.title} className="h-full w-full object-contain" />
-                    </div>
-                  ))}
+            <div className="grid w-full max-w-5xl grid-cols-2 items-center gap-x-8 gap-y-6 sm:grid-cols-4 lg:grid-cols-7">
+              {bannerContent.photosCollection.items.map((image) => (
+                <div key={image.title} className="flex h-10 min-w-0 justify-center">
+                  <img src={image.url} alt={image.title} className="h-full w-full max-w-32 object-contain" />
                 </div>
-              )}
+              ))}
             </div>
           )}
         </div>

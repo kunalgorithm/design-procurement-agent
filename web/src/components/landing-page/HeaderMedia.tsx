@@ -90,7 +90,7 @@ export const HeaderMediaComponent = ({ className, contentClassName, data, isBlac
                   <ArrowRight size={18} aria-hidden="true" />
                 </a>
               ))}
-            {isSignupAction && <p className="form-hero-note">Kitchen design is available now. Estimating and job admin are rolling out during the pilot.</p>}
+            {isSignupAction && <p className="form-hero-note">Get FORM’s number. Start with a photo and a text.</p>}
           </div>
           <div className="min-w-0 w-full">
             {headerContent.photosCollection?.items[0]?.url && (

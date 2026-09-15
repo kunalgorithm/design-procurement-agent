@@ -7,7 +7,7 @@ export const Footer = () => (
     <div className="form-container flex flex-col gap-8 border-t border-white/20 py-10 md:flex-row md:items-center md:justify-between">
       <div>
         <Link to="/" aria-label="FORM for Contractors home"><FormLogo white size={112} /></Link>
-        <p className="mt-3 text-sm text-white/70">Design, estimates, and job admin by text. A free contractor pilot.</p>
+        <p className="mt-3 text-sm text-white/70">Design support for your next kitchen project.</p>
         <p className="mt-2 text-xs text-white/60">FORM © {new Date().getFullYear()}</p>
       </div>
       <div>

@@ -42,8 +42,8 @@ export default function ContractorSignupPage() {
   });
 
   useEffect(() => {
-    document.title = 'Join FORM — Free contractor pilot';
-    document.querySelector('meta[name="description"]')?.setAttribute('content', 'Join the free FORM contractor pilot. Start with kitchen design by text, with estimating and job admin rolling out during the pilot.');
+    document.title = 'Get started with FORM';
+    document.querySelector('meta[name="description"]')?.setAttribute('content', 'Get FORM’s number and bring design support to your next kitchen bid, all by text.');
   }, []);
 
   useEffect(() => {
@@ -115,11 +115,11 @@ export default function ContractorSignupPage() {
         <aside className="signup-story">
           <div className="signup-story-copy">
             <span className="signup-eyebrow"><span /> BUILT FOR KITCHEN REMODELERS</span>
-            <h2>Win the job.<br />Keep your evening.</h2>
-            <p>Design, estimates, and job admin by text.<br />Built to help your business make more from every job.</p>
+            <h2>You build.<br />We bring the design.</h2>
+            <p>Help your client picture their new kitchen.<br />Work through the details together by text.</p>
           </div>
           <img className="signup-story-image" src="/kitchen-sample.jpg" alt="A bright kitchen with custom cabinetry and a warm wood island" />
-          <div className="signup-story-note"><MessageCircle size={21} /><div><strong>Your business. A little extra help.</strong><span>A free contractor pilot, right in your texts.</span></div></div>
+          <div className="signup-story-note"><MessageCircle size={21} /><div><strong>Your client. Your project. Design support.</strong><span>Kitchen ideas and feedback, in one conversation.</span></div></div>
           <span className="signup-image-credit">DESIGN INSPIRATION</span>
         </aside>
 
@@ -134,9 +134,9 @@ export default function ContractorSignupPage() {
 
           <div className="signup-step-content" key={step}>
             {step === 0 && <>
-              <div className="signup-intro"><span className="signup-eyebrow">JOIN THE FREE CONTRACTOR PILOT</span>
+              <div className="signup-intro"><span className="signup-eyebrow">START WITH YOUR NEXT KITCHEN</span>
                 <h1 ref={heading} tabIndex={-1}>Give your next kitchen bid an edge.</h1>
-                <p>Get FORM’s number and put it to work on your next bid. Kitchen design is available now. Estimating and job admin are rolling out during the pilot.</p>
+                <p>Get FORM’s number. Share a kitchen photo and give your client a design they’re excited to build.</p>
               </div>
               <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
                 if ((errors.website || errors.licenseNumber) && optionalDetails.current) {
@@ -168,7 +168,7 @@ export default function ContractorSignupPage() {
                 <button type="submit" className="signup-primary" disabled={signup.isPending}>
                   {signup.isPending ? <><LoaderCircle className="signup-spinner" size={18} /> Getting FORM’s number…</> : <>Get design support for my next bid <ArrowRight size={18} /></>}
                 </button>
-                <p className="signup-footnote">Free to join. No credit card. No app to download.<br />Get FORM’s number next. You choose when to text.</p>
+                <p className="signup-footnote">No app to download. Start with a text.</p>
               </form>
             </>}
 
