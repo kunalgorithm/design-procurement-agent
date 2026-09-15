@@ -134,7 +134,7 @@ export default function ContractorSignupPage() {
             {step === 0 && <>
               <div className="signup-intro"><span className="signup-eyebrow">LET’S BUILD SOMETHING GREAT</span>
                 <h1 ref={heading} tabIndex={-1}>Meet your new<br className="signup-title-break" /> design partner.</h1>
-                <p>Tell us a little about yourself. We’ll connect you with your FORM design agent.</p>
+                <p>Share your details to get FORM’s number, then start your kitchen project by text.</p>
               </div>
               <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
                 <fieldset disabled={signup.isPending} className="signup-fields">
@@ -156,7 +156,7 @@ export default function ContractorSignupPage() {
                 {signup.isError && <div className="signup-submit-error" role="alert">{signup.error instanceof Error && signup.error.message !== 'Failed to fetch'
                   ? signup.error.message : 'We couldn’t connect. Please check your connection and try again.'}</div>}
                 <button type="submit" className="signup-primary" disabled={signup.isPending}>
-                  {signup.isPending ? <><LoaderCircle className="signup-spinner" size={18} /> Connecting you…</> : <>Meet my design agent <ArrowRight size={18} /></>}
+                  {signup.isPending ? <><LoaderCircle className="signup-spinner" size={18} /> Connecting you…</> : <>Get design support for my next bid <ArrowRight size={18} /></>}
                 </button>
                 <p className="signup-footnote">Your next project starts with a conversation.</p>
               </form>
