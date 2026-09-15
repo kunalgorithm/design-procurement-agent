@@ -3,8 +3,9 @@ import type { MediaFile } from './media.js';
 import type { z } from 'zod';
 import type { contractorSignupSchema } from './contractor-schema.js';
 import { transaction } from './db.js';
-import { parseChatCommand, type ChatCommand } from './chat-commands.js';
-import { emptyBrief, isStopRequest, selfIdentifiedRole, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext, type Attachment } from './domain.js';
+import { normalizePhoneNumber, parseChatCommand, type ChatCommand } from './chat-commands.js';
+import { contractorMatches, type RegisteredContractor } from './group-contractors.js';
+import { emptyBrief, isStopRequest, selfIdentifiedRole, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext, type Attachment, type ChatParticipants } from './domain.js';
 
 export interface Turn {
   id: string; conversation_id: string; kind: 'agent' | 'operator' | 'control';
@@ -32,11 +33,11 @@ export class Store {
   }
   async registerContractor(input: z.infer<typeof contractorSignupSchema>, agentPhone: string) {
     const result = await this.pool.query<{ agent_phone: string }>(`
-      INSERT INTO contractor_signups(id,first_name,last_name,phone,email,website,license_number,agent_phone)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+      INSERT INTO contractor_signups(id,first_name,last_name,phone,email,website,license_number,agent_phone,business_name)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
       ON CONFLICT(id) DO UPDATE SET id=contractor_signups.id
       RETURNING agent_phone`, [input.submissionId, input.firstName, input.lastName, input.phone,
-      input.email, input.website ?? null, input.licenseNumber ?? null, agentPhone]);
+      input.email, input.website ?? null, input.licenseNumber ?? null, agentPhone, input.businessName ?? null]);
     return result.rows[0]!;
   }
 
@@ -131,6 +132,33 @@ export class Store {
   async listConversations(archived = false) {
     return (await this.pool.query<Conversation>('SELECT * FROM conversations WHERE (archived_at IS NOT NULL)=$1 ORDER BY updated_at DESC LIMIT 100', [archived])).rows;
   }
+  async syncChatParticipants(id: string, participants: ChatParticipants) {
+    await transaction(this.pool, async (client) => {
+      const conversation = (await client.query<Conversation>('SELECT * FROM conversations WHERE id=$1 FOR UPDATE', [id])).rows[0];
+      if (!conversation || conversation.archived_at) return;
+      if (conversation.owner_handle && normalizePhoneNumber(conversation.owner_handle) !== participants.owner) throw new Error('CHAT_OWNER_MISMATCH');
+      await client.query('UPDATE conversations SET participant_handles=$2,owner_handle=$3,is_group=$4 WHERE id=$1',
+        [id, participants.handles, participants.owner, participants.isGroup]);
+      const matches = await this.groupContractors({ ...conversation, participant_handles: participants.handles,
+        owner_handle: participants.owner, is_group: participants.isGroup }, client);
+      if (!conversation.contractor_signup_id && matches.contractors.length === 1 && !matches.ambiguousPhones.length) {
+        await client.query('UPDATE conversations SET contractor_signup_id=$2 WHERE id=$1 AND contractor_signup_id IS NULL',
+          [id, matches.contractors[0]!.id]);
+      }
+    });
+  }
+  private async groupContractors(conversation: Conversation, connection: pg.Pool | pg.PoolClient = this.pool) {
+    if (conversation.channel !== 'linq' || !conversation.is_group || !conversation.owner_handle) return { contractors: [], ambiguousPhones: [] };
+    // An authoritative roster can include a contractor who has not spoken yet.
+    // Older conversations without a roster only match actual senders in this chat.
+    const handles = conversation.participant_handles ?? (await connection.query<{ sender: string }>(
+      "SELECT DISTINCT sender FROM messages WHERE conversation_id=$1 AND role='user'", [conversation.id])).rows.map((row) => row.sender);
+    const phones = handles.map(normalizePhoneNumber).filter((phone): phone is string => !!phone);
+    const rows = await connection.query<RegisteredContractor>(`SELECT id,phone,first_name AS "firstName",last_name AS "lastName",
+      business_name AS "businessName",website FROM contractor_signups WHERE agent_phone=$1 AND phone=ANY($2::text[])
+      ORDER BY created_at,id`, [normalizePhoneNumber(conversation.owner_handle), phones]);
+    return contractorMatches(rows.rows);
+  }
   async context(id: string, throughSeq?: string, includeControls = false): Promise<AgentContext | undefined> {
     const conversation = await this.getConversation(id);
     if (!conversation) return undefined;
@@ -150,7 +178,9 @@ export class Store {
     const designCount = (await this.pool.query<{ count: number }>("SELECT count(*)::int AS count FROM messages WHERE conversation_id=$1 AND role='assistant' AND NOT is_control AND jsonb_array_length(attachments)>0", [id])).rows[0]!.count;
     // Keep the outcome available even after its message/task leaves the recent-history window.
     const finalizedDesign = (await this.pool.query<Handoff>("SELECT * FROM handoffs WHERE conversation_id=$1 AND kind='finalization' AND status!='superseded' ORDER BY created_at DESC LIMIT 1", [id])).rows[0] ?? null;
-    return { conversation, messages: messages.rows, handoffs: handoffs.rows, referenceMessages: references.rows, hasAssistantReply: replied.rows[0]!.exists, designCount, finalizedDesign };
+    const matches = await this.groupContractors(conversation);
+    return { conversation, messages: messages.rows, handoffs: handoffs.rows, referenceMessages: references.rows, hasAssistantReply: replied.rows[0]!.exists, designCount, finalizedDesign,
+      registeredContractors: matches.contractors, ambiguousContractorPhones: matches.ambiguousPhones };
   }
   async pause(id: string, paused: boolean) {
     return transaction(this.pool, async (client) => {

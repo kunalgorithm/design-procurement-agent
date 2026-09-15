@@ -5,6 +5,7 @@ const name = (label: string) => v.pipe(v.string(), v.trim(), v.minLength(1, `Ent
 export const contractorSignupSchema = v.object({
   firstName: name('first name'),
   lastName: name('last name'),
+  businessName: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(150, 'Use 150 characters or fewer.'))),
   phone: v.pipe(v.string(), v.trim(), v.maxLength(40), v.check((value) => {
     if (!/^\+?[\d\s().-]+$/.test(value)) return false;
     const digits = value.replace(/\D/g, '');

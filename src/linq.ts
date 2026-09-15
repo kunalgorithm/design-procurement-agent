@@ -1,6 +1,7 @@
 import Linq from '@linqapp/sdk';
 import { z } from 'zod';
-import type { Attachment, IncomingMessage, Messenger, Reaction } from './domain.js';
+import type { Attachment, IncomingMessage, Messenger, Reaction, ChatParticipants } from './domain.js';
+import { normalizePhoneNumber } from './chat-commands.js';
 
 import { readProjectMedia, type MediaRepository } from './media.js';
 
@@ -48,6 +49,20 @@ export function createLinq(apiKey: string, webhookSecret: string) {
 
 export class LinqMessenger implements Messenger {
   constructor(private readonly client: Linq, private readonly media?: MediaRepository, private readonly upload: typeof fetch = fetch) {}
+  async chatParticipants(chatId: string, owner?: string | null): Promise<ChatParticipants> {
+    const chat = await this.client.chats.retrieve(chatId);
+    if (chat.id !== chatId) throw new Error('CHAT_ID_MISMATCH');
+    const active = chat.handles.filter((person) => !person.left_at && person.status !== 'left' && person.status !== 'removed');
+    const owned = active.filter((person) => person.is_me);
+    const line = owner
+      ? owned.find((person) => normalizePhoneNumber(person.handle) === normalizePhoneNumber(owner))
+      : owned.length === 1 ? owned[0] : undefined;
+    if (!line || !normalizePhoneNumber(line.handle)) throw new Error('CHAT_OWNER_MISMATCH');
+    return {
+      handles: [...new Set(active.filter((person) => !person.is_me).map((person) => normalizePhoneNumber(person.handle) ?? person.handle))],
+      owner: normalizePhoneNumber(line.handle)!, isGroup: chat.is_group,
+    };
+  }
   async react(messageId: string, emoji: Reaction): Promise<void> {
     await this.client.messages.addReaction(messageId, emoji === '❤️'
       ? { operation: 'add', type: 'love' }

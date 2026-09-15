@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import type { ResponseInput, ResponseInputContent } from 'openai/resources/responses/responses';
-import { modelDecisionSchema, participantContext, senderRole, type Agent, type AgentContext, type Attachment } from './domain.js';
+import { modelDecisionSchema, participantContext, identifiedSenderRole, type Agent, type AgentContext, type Attachment } from './domain.js';
 import { readProjectMedia, sandboxMediaId, type MediaRepository } from './media.js';
 
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -82,7 +82,7 @@ export class OpenAIAgent implements Agent {
       }
       const content: ResponseInputContent[] = [{
         type: 'input_text',
-        text: JSON.stringify({ messageId: message.id, sender: message.sender, role: senderRole(message.sender), source: message.role, text: message.text, attachments: message.attachments }),
+        text: JSON.stringify({ messageId: message.id, sender: message.sender, role: identifiedSenderRole(context, message.sender), source: message.role, text: message.text, attachments: message.attachments }),
       }, ...appendMedia(message.attachments, 'User-provided image or document')];
       input.push({ role: 'user', content });
     }

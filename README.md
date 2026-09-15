@@ -7,6 +7,7 @@ The editable conversation prompt lives in [`prompts/designer.md`](prompts/design
 ## What works
 
 - Signed Linq webhooks, sender-aware group conversations, and replies to the originating chat.
+- Group participants matched to contractor signups, with saved names/practices, isolated project briefs, and a persistent contractor assignment when exactly one match exists.
 - OpenAI Responses with structured decisions and image/PDF input. Default chat model: `gpt-5.6-terra`. Kitchen renders use the Images API (`OPENAI_IMAGE_MODEL`, default `gpt-image-2.5-sunburst`).
 - PostgreSQL conversation history, project briefs, handoffs, and durable queued replies.
 - Debouncing, duplicate-event protection, per-chat serialization, retries, and stable Linq send idempotency keys.
@@ -97,6 +98,24 @@ LINQ_ALLOWED_HANDLES=<optional comma-separated owned Linq phone numbers>
 `LINQ_ALLOWED_HANDLES` filters the agent's owned lines, not the customer phone numbers. You can also scope the Linq subscription using its `phone_numbers` option. The live-mode variables are intentionally not managed by the Blueprint, so a later Blueprint sync does not reset them.
 
 Before switching live, the webhook endpoint returns 503. Complete configuration before testing real traffic. Start a group containing the Linq line, contractor, and homeowner, then send an introduction. The agent responds to incoming messages; it does not create groups or proactively text new contacts. Delivery and group capabilities depend on the participants' available transport and your Linq line.
+
+### Contractor-aware group intake
+
+Signup accepts an optional company/practice name (`businessName`); previous signups continue working when it is absent. Contractors must use the phone they registered and the FORM number assigned at signup. A group turn reads Linq's current [chat participants](https://docs.linqapp.com/channel/imessage/api/resources/chats/methods/retrieve/), excluding owned, removed, and departed handles. It resolves phone matches within that assigned line, including a contractor who has not spoken yet. Apple ID emails, names typed into messages, and other participants' numbers do not become phone matches. Identical signup retries resolve to one identity; conflicting records remain unresolved. These are signup details, not a license or professional-identity verification.
+
+The first useful reply acknowledges the known contractor, mentions their practice only when saved, and introduces FORM. It collects missing project details in the group, directs measurements to the contractor and preferences to the homeowner, and summarizes the brief before the first design unless they already explicitly requested generation. Details arrive in any order; corrections and attachments remain tied to this group's conversation. Direct-message intake stays unchanged. Unregistered participants are not automatically designated homeowners, and registered contractors cannot approve a design on a homeowner's behalf.
+
+Migration `007_group_contractors.sql` is additive: it adds practice names, a current participant roster, an indexed signup lookup, and a nullable contractor assignment. A single unambiguous contractor is linked to the project; with multiple candidates FORM asks who is leading rather than assigning arbitrarily. A roster refresh does not move a project's ownership to a new contractor. `/new` starts another project in the same Messages thread and resolves its participants again. Group names are display-only; the Linq chat ID routes messages. Existing duplicate-event protection, burst grouping, retries, and saved decisions still apply. A temporary roster lookup failure retries before asking the model or sending a reply. Only model context receives the contractor's name and practice; signup email and license are excluded.
+
+Internal test sequence:
+
+1. Register two testers with different roles: one contractor through `/signup`, one homeowner who does not register as a contractor. If using Linq's shared free line, register/activate both test contacts as required by that line.
+2. Create an iMessage group containing both testers and FORM. Send a contractor introduction; confirm recognition and a useful intake question.
+3. In another group, let the homeowner speak first. FORM should still recognize the contractor from the roster. Keep practice blank once to confirm it is not invented.
+4. Send the address, a few photos, and measurements in a burst. Correct a measurement and confirm that only the missing information is requested.
+5. Test two simultaneous projects, a removed participant, a second contractor, and an Apple ID sender. Keep Android/mixed-transport compatibility as a separate handset test.
+
+`npm run check` and `npm run test:integration` cover signed events through persistence and mocked delivery, role resolution, isolation, retries, duplicates, and group changes. To additionally exercise the actual language model with synthetic conversations (no Linq messages or application writes), set `OPENAI_API_KEY` and run `npx tsx scripts/eval-group-intake.ts`.
 
 ### Admin commands in Messages
 

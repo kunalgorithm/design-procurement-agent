@@ -71,6 +71,15 @@ export class Worker {
         }
         return true;
       }
+      if (turn.kind === 'agent' && !turn.decision && this.messenger.chatParticipants && this.mode === 'live') {
+        const conversation = await this.store.getConversation(turn.conversation_id);
+        if (conversation?.channel === 'linq' && (conversation.is_group || !conversation.participant_handles)) {
+          stage = 'group_participants';
+          const participants = await this.messenger.chatParticipants(conversation.external_id, conversation.owner_handle);
+          await this.store.syncChatParticipants(conversation.id, participants);
+        }
+      }
+      stage = 'agent';
       const context = await this.store.context(turn.conversation_id, turn.through_seq);
       if (!context) throw new Error('CONVERSATION_MISSING');
       if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }

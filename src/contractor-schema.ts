@@ -27,6 +27,7 @@ export const contractorSignupSchema = z.object({
   submissionId: z.uuid(),
   firstName: z.string().trim().min(1, 'Enter your first name.').max(100),
   lastName: z.string().trim().min(1, 'Enter your last name.').max(100),
+  businessName: z.string().trim().max(150).transform((value) => value || undefined).optional(),
   phone,
   email: z.string().trim().toLowerCase().max(254).pipe(z.email()),
   website: optionalWebsite.optional(),
