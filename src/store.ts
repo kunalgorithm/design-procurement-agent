@@ -178,8 +178,14 @@ export class Store {
     const designCount = (await this.pool.query<{ count: number }>("SELECT count(*)::int AS count FROM messages WHERE conversation_id=$1 AND role='assistant' AND NOT is_control AND jsonb_array_length(attachments)>0", [id])).rows[0]!.count;
     // Keep the outcome available even after its message/task leaves the recent-history window.
     const finalizedDesign = (await this.pool.query<Handoff>("SELECT * FROM handoffs WHERE conversation_id=$1 AND kind='finalization' AND status!='superseded' ORDER BY created_at DESC LIMIT 1", [id])).rows[0] ?? null;
+    // A checkpoint exists only after its question was delivered. Read the latest
+    // completed agent turn, so another intake reply invalidates an older question.
+    const intakeCheckpoint = (await this.pool.query<Message>(`SELECT m.* FROM
+      (SELECT * FROM turns WHERE conversation_id=$1 AND kind='agent' AND status='done' ORDER BY queue_order DESC LIMIT 1) t
+      JOIN messages m ON m.id=t.id AND m.conversation_id=t.conversation_id AND m.role='assistant'
+      WHERE t.decision->'intakeConfirmation'->>'action'='ask'`, [id])).rows[0] ?? null;
     const matches = await this.groupContractors(conversation);
-    return { conversation, messages: messages.rows, handoffs: handoffs.rows, referenceMessages: references.rows, hasAssistantReply: replied.rows[0]!.exists, designCount, finalizedDesign,
+    return { conversation, messages: messages.rows, handoffs: handoffs.rows, referenceMessages: references.rows, hasAssistantReply: replied.rows[0]!.exists, designCount, finalizedDesign, intakeCheckpoint,
       registeredContractors: matches.contractors, ambiguousContractorPhones: matches.ambiguousPhones };
   }
   async pause(id: string, paused: boolean) {
@@ -309,10 +315,13 @@ export class Store {
       [turn.conversation_id,turn.through_seq])).rowCount! > 0;
   }
   async deferFinalization(turn: Turn) {
+    return this.deferForNewInput(turn);
+  }
+  async deferForNewInput(turn: Turn) {
     return transaction(this.pool, async (client) => {
       await client.query('SELECT id FROM conversations WHERE id=$1 FOR UPDATE', [turn.conversation_id]);
       if (!await this.hasNewerUserMessage(client, turn)) return false;
-      // Ingest already queued the new burst. Let that turn evaluate approval and the new feedback together.
+      // Ingest already queued the new burst. Evaluate all uploads/feedback together.
       await client.query("UPDATE turns SET status='cancelled',completed_at=now(),lease_until=NULL WHERE id=$1 AND status='processing'", [turn.id]);
       return true;
     });
@@ -323,7 +332,8 @@ export class Store {
       await client.query('SELECT id FROM conversations WHERE id=$1 FOR UPDATE', [turn.conversation_id]);
       const current = (await client.query<Turn>('SELECT * FROM turns WHERE id=$1 FOR UPDATE', [turn.id])).rows[0]!;
       if (current.status === 'done') return;
-      const supersededApproval = decision.handoff?.kind === 'finalization' && await this.hasNewerUserMessage(client, turn);
+      const supersededApproval = (decision.handoff?.kind === 'finalization' || !!decision.intakeConfirmation)
+        && await this.hasNewerUserMessage(client, turn);
       if (supersededApproval) await client.query("UPDATE turns SET status='cancelled',completed_at=now(),lease_until=NULL WHERE id=$1", [turn.id]);
       if (current.status === 'cancelled' || supersededApproval) {
         // A pause cannot recall a send already accepted by Linq. Keep its audit trail.

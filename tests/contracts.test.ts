@@ -71,6 +71,7 @@ test('handoffs require useful context and cannot duplicate open work', () => {
   const request = decision({ handoff: { kind: 'design', summary: 'Start the kitchen design.' } });
   assert.equal(validateDecision(request, ctx).handoff, null);
   request.brief = { ...request.brief, propertyAddress: '123 Example Street' };
+  ctx.designCount = 1; // Existing designs can be revised without repeating initial intake.
   const ready = validateDecision(request, ctx);
   assert.equal(ready.handoff?.kind, 'design');
   assert.equal(ready.brief.scope, 'Kitchen redesign');

@@ -1,6 +1,6 @@
 # Design & Procurement Agent
 
-A Node.js + TypeScript backend for a kitchen renovation assistant in Linq iMessage, RCS, and SMS conversations. Contractors and homeowners can text in the same group. The project is assumed to be a kitchen redesign: FORM asks for the property address and photos (current kitchen, optional floor plan, optional inspiration), then uses the OpenAI Images API to generate a redesigned kitchen from those inputs.
+A Node.js + TypeScript backend for a kitchen renovation assistant in Linq iMessage, RCS, and SMS conversations. Contractors and homeowners can text in the same group. The project is assumed to be a kitchen redesign: FORM reviews current-kitchen and inspiration photos, asks about a floor plan and design goals, and waits for a final intake confirmation before using the OpenAI Images API to create the first design.
 
 The editable conversation prompt lives in [`prompts/designer.md`](prompts/designer.md).
 
@@ -42,7 +42,7 @@ Edit `.env`: set `OPENAI_API_KEY`, and replace `ADMIN_API_KEY` with a random tok
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) for the contractor landing page, or [http://localhost:3000/signup](http://localhost:3000/signup) for signup. The sandbox is at [http://localhost:3000/sandbox](http://localhost:3000/sandbox). In development the browser is signed in automatically. Switch Homeowner / Contractor, send the property address plus current-kitchen, floor-plan, or inspiration photos, and FORM generates a redesigned kitchen. Use **Admin** to clear the chat, pause, send an operator note, complete handoffs, or retry a failed turn. The composer stays at the bottom of the page. The sandbox never sends Linq messages.
+Open [http://localhost:3000](http://localhost:3000) for the contractor landing page, or [http://localhost:3000/signup](http://localhost:3000/signup) for signup. The sandbox is at [http://localhost:3000/sandbox](http://localhost:3000/sandbox). In development the browser is signed in automatically. Switch Homeowner / Contractor, send the property address and kitchen photos, answer the missing intake questions, then reply to the final “anything else?” question to start the first design. Use **Admin** to clear the chat, pause, send an operator note, complete handoffs, or retry a failed turn. The composer stays at the bottom of the page. The sandbox never sends Linq messages.
 
 Migrations run automatically on startup. The same backend is also available from a terminal:
 
@@ -103,7 +103,7 @@ Before switching live, the webhook endpoint returns 503. Complete configuration 
 
 Signup accepts an optional company/practice name (`businessName`); previous signups continue working when it is absent. Contractors must use the phone they registered and the FORM number assigned at signup. A group turn reads Linq's current [chat participants](https://docs.linqapp.com/channel/imessage/api/resources/chats/methods/retrieve/), excluding owned, removed, and departed handles. It resolves phone matches within that assigned line, including a contractor who has not spoken yet. Apple ID emails, names typed into messages, and other participants' numbers do not become phone matches. Identical signup retries resolve to one identity; conflicting records remain unresolved. These are signup details, not a license or professional-identity verification.
 
-The first useful reply acknowledges the known contractor, mentions their practice only when saved, and introduces FORM. It collects missing project details in the group, directs measurements to the contractor and preferences to the homeowner, and summarizes the brief before the first design unless they already explicitly requested generation. Details arrive in any order; corrections and attachments remain tied to this group's conversation. Direct-message intake stays unchanged. Unregistered participants are not automatically designated homeowners, and registered contractors cannot approve a design on a homeowner's behalf.
+The first useful reply acknowledges the known contractor, mentions their practice only when saved, and introduces FORM. It collects missing project details in the group, directs measurements to the contractor and preferences to the homeowner, and summarizes the brief and waits for a reply to its final intake question before the first design. Details arrive in any order; corrections and attachments remain tied to this group's conversation. Direct messages use the same first-design intake sequence. Unregistered participants are not automatically designated homeowners, and registered contractors cannot approve a design on a homeowner's behalf.
 
 Migration `007_group_contractors.sql` is additive: it adds practice names, a current participant roster, an indexed signup lookup, and a nullable contractor assignment. A single unambiguous contractor is linked to the project; with multiple candidates FORM asks who is leading rather than assigning arbitrarily. A roster refresh does not move a project's ownership to a new contractor. `/new` starts another project in the same Messages thread and resolves its participants again. Group names are display-only; the Linq chat ID routes messages. Existing duplicate-event protection, burst grouping, retries, and saved decisions still apply. A temporary roster lookup failure retries before asking the model or sending a reply. Only model context receives the contractor's name and practice; signup email and license are excluded.
 
@@ -116,6 +116,16 @@ Internal test sequence:
 5. Test two simultaneous projects, a removed participant, a second contractor, and an Apple ID sender. Keep Android/mixed-transport compatibility as a separate handset test.
 
 `npm run check` and `npm run test:integration` cover signed events through persistence and mocked delivery, role resolution, isolation, retries, duplicates, and group changes. To additionally exercise the actual language model with synthetic conversations (no Linq messages or application writes), set `OPENAI_API_KEY` and run `npx tsx scripts/eval-group-intake.ts`.
+
+### Wait for the complete first-design brief
+
+Both DMs and groups review supplied images, clarify current kitchen versus inspiration only when unclear, ask whether a plan/sketch is available, and gather style OR practical goals. Volunteered details are reused. A declined/unavailable plan is accepted; “more coming” keeps intake pending. Names, budget, and timing stay optional. FORM then summarizes and asks “Anything else you’d like to add before I create your first design?” It waits for a readiness reply; more files or details trigger a fresh checkpoint.
+
+`brief.intake` stores photo/plan/preference status. The server appends the final question and derives `intakeCheckpoint` from the latest completed agent turn with an actually delivered question. A model cannot invent a checkpoint or use an old unrelated yes: its `intakeConfirmation` must reference the latest later user text. Upload-only replies cannot confirm readiness. The checkpoint survives restarts and the recent-history limit; subsequent intake replies clear it, and `/new` starts fresh. Older saved decisions without a checkpoint pass through this gate before a first design. No additional migration is needed for intake; existing JSON records remain readable.
+
+New input during first-intake processing defers the obsolete turn to the already queued newer burst. The worker rechecks before rendering and before delivery. If a render has already started, the external image request may still finish, but an obsolete result is not sent. A message already accepted by Linq cannot be recalled. Later design revisions retain the existing feedback flow and do not repeat initial intake; approving a completed design remains a separate milestone.
+
+Run `npx tsx scripts/eval-initial-intake.ts` with `OPENAI_API_KEY` for opt-in real-model checks using the public sample kitchen. It covers a multi-turn DM, a complete group brief, inspiration-only input, unavailable plans, additional uploads, requests to wait, and final readiness. It makes paid model requests but no image-generation calls, app writes, or Linq sends.
 
 ### Admin commands in Messages
 

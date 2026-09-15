@@ -1,3 +1,4 @@
+import { prepareFirstDesign, confirmedDesign } from './intake-fixtures.js';
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -101,10 +102,10 @@ test('commands require a valid signed webhook and configured sender, including f
 test('/reset and /new archive the full old session and route later messages to fresh context', async () => {
   for (const name of ['/reset','/new']) {
     const chat = randomUUID();
-    const original = await store.ingest(incoming({ chatId: chat, text: '123 Example St, use oak' }), 'linq');
+    const original = await prepareFirstDesign(store, incoming({ chatId: chat, text: '123 Example St, use oak' }), 'linq');
     const render: Attachment = { id: randomUUID(), url: '/unused-test-image', mimeType: 'image/jpeg', filename: 'design.jpg', sizeBytes: 4 };
     const brief = { ...decision().brief, propertyAddress: '123 Example St', style: 'Oak' };
-    await worker({ async respond() { return decision({ brief, handoff: { kind: 'design', summary: 'Old design' } }); } },messenger,{ async generate() { return [render]; } }).tick();
+    await worker({ async respond(ctx) { return confirmedDesign(ctx, decision({ brief, handoff: { kind: 'design', summary: 'Old design' } })); } },messenger,{ async generate() { return [render]; } }).tick();
     await store.saveMedia(original.conversationId!, render, Buffer.from([0xff,0xd8,0xff,0xd9]));
     const pending = await store.ingest(incoming({ chatId: chat, text: 'Old revision' }), 'linq');
     const operator = await store.queueOperator(original.conversationId!, 'Old operator reply', randomUUID());
@@ -143,12 +144,12 @@ test('/reset and /new archive the full old session and route later messages to f
 });
 
 test('/status works during rendering and a reset suppresses the old result', async () => {
-  const chat = randomUUID(); const original = await store.ingest(incoming({ chatId: chat }), 'linq');
+  const chat = randomUUID(); const original = await prepareFirstDesign(store, incoming({ chatId: chat }), 'linq');
   let release!: () => void; let entered!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   const started = new Promise<void>((resolve) => { entered = resolve; });
   const render: Attachment = { id: randomUUID(), url: '/old-design', mimeType: 'image/jpeg', filename: 'old.jpg', sizeBytes: 4 };
-  const run = worker({ async respond() { return decision({ reply: 'Old result', brief: { ...decision().brief, propertyAddress: 'Old address' }, handoff: { kind: 'design', summary: 'Old design' } }); } },messenger,
+  const run = worker({ async respond(ctx) { return confirmedDesign(ctx, decision({ reply: 'Old result', brief: { ...decision().brief, propertyAddress: 'Old address' }, handoff: { kind: 'design', summary: 'Old design' } })); } },messenger,
     { async generate() { entered(); await gate; return [render]; } }).tick();
   await started;
   try {

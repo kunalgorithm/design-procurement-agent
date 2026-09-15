@@ -1,6 +1,17 @@
 import { z } from 'zod';
 import { normalizePhoneNumber } from './chat-commands.js';
 import type { RegisteredContractor } from './group-contractors.js';
+import { validateInitialIntake } from './intake.js';
+
+const intakeSchema = z.object({
+  currentKitchen: z.enum(['pending', 'provided', 'unavailable']),
+  floorPlan: z.enum(['pending', 'provided', 'unavailable']),
+  preferences: z.enum(['pending', 'provided', 'open']),
+});
+const intakeConfirmationSchema = z.object({
+  action: z.enum(['ask', 'confirm']),
+  messageId: z.string().uuid().nullable(),
+}).nullable();
 
 const imageReferenceSchema = z.object({
   attachmentId: z.string().max(200),
@@ -9,6 +20,7 @@ const imageReferenceSchema = z.object({
 const imageReferencesSchema = z.array(imageReferenceSchema).max(40);
 const detail = z.string().max(2000).nullable();
 export const briefSchema = z.object({
+  intake: intakeSchema.optional(),
   imageReferences: imageReferencesSchema.optional(),
   homeownerName: detail,
   contractorName: detail,
@@ -26,6 +38,7 @@ export const briefSchema = z.object({
 });
 export type Brief = z.infer<typeof briefSchema>;
 export const emptyBrief = (): Brief => ({
+  intake: { currentKitchen: 'pending', floorPlan: 'pending', preferences: 'pending' },
   imageReferences: [],
   homeownerName: null, contractorName: null, propertyAddress: null, scope: null,
   goals: [], style: null, materials: [], appliances: [], budget: null, timeline: null,
@@ -43,11 +56,14 @@ export const decisionSchema = z.object({
   reaction: reactionSchema.nullable().optional(),
   // Optional for previously saved turns; only finalization may carry approval evidence.
   approval: approvalSchema.optional(),
+  // Optional for old saved turns. A delivered checkpoint is established by the server.
+  intakeConfirmation: intakeConfirmationSchema.optional(),
   brief: briefSchema,
   handoff: z.object({ kind: taskKindSchema, summary: z.string().min(1).max(2000) }).nullable(),
 });
 // OpenAI's strict output schema requires every field, including nullable ones.
-export const modelDecisionSchema = decisionSchema.extend({ reaction: reactionSchema.nullable(), approval: approvalSchema, brief: briefSchema.extend({ imageReferences: imageReferencesSchema }) });
+export const modelDecisionSchema = decisionSchema.extend({ reaction: reactionSchema.nullable(), approval: approvalSchema,
+  intakeConfirmation: intakeConfirmationSchema, brief: briefSchema.extend({ imageReferences: imageReferencesSchema, intake: intakeSchema }) });
 export type Decision = z.infer<typeof decisionSchema>;
 
 export const attachmentSchema = z.object({
@@ -81,7 +97,7 @@ export interface Handoff {
   id: string; kind: TaskKind; summary: string; status: 'open' | 'completed' | 'superseded';
   design_approval?: { design: Attachment; customerMessageId: string; customerSender: string; customerText: string; approvedAt: string; brief: Brief } | null;
 }
-export interface AgentContext { conversation: Conversation; messages: Message[]; handoffs: Handoff[]; hasAssistantReply?: boolean; referenceMessages?: Message[]; designCount?: number; finalizedDesign?: Handoff | null; registeredContractors?: RegisteredContractor[]; ambiguousContractorPhones?: string[] }
+export interface AgentContext { conversation: Conversation; messages: Message[]; handoffs: Handoff[]; hasAssistantReply?: boolean; referenceMessages?: Message[]; designCount?: number; finalizedDesign?: Handoff | null; intakeCheckpoint?: Message | null; registeredContractors?: RegisteredContractor[]; ambiguousContractorPhones?: string[] }
 export interface Agent { respond(context: AgentContext): Promise<Decision> }
 export interface Messenger {
   send(chatId: string, text: string, idempotencyKey: string, attachments?: Attachment[]): Promise<string>;
@@ -166,6 +182,7 @@ export function participantContext(context: AgentContext) {
     if (context.conversation.is_group) lines.push('Group finalization requires a known homeowner/customer sender role. If the approver has no known role, ask whether they are the homeowner. A prior assistant reply saying "your contractor" does not establish their role.');
   }
   const review = designReview(context);
+  lines.push(`First-design intake checkpoint: ${JSON.stringify(context.intakeCheckpoint ? { messageId: context.intakeCheckpoint.id, text: context.intakeCheckpoint.text, seq: context.intakeCheckpoint.seq } : null)}. Only a later reply to this delivered question can confirm readiness for the first design. This is separate from finalizing a delivered design.`);
   lines.push(`If you request a design handoff, your reply will arrive with the finished image. Present it briefly, then ${review.count === 0
     ? 'ask what they think and invite changes. This is the first design; do not ask to finalize it yet'
     : 'ask whether they would like to finalize this version so their contractor can order materials and plan the work. Omit that invitation only if they asked for time or asked you to stop approval prompts'}. Do not merely promise to make the change.`);
@@ -179,12 +196,13 @@ export function participantContext(context: AgentContext) {
 }
 
 export function validateDecision(decision: Decision, context: AgentContext): Decision {
-  const parsed = decisionSchema.parse(decision);
+  let parsed = decisionSchema.parse(decision);
   const registered = context.registeredContractors ?? [];
   const primary = context.conversation.contractor_signup_id
     ? registered.find((person) => person.id === context.conversation.contractor_signup_id)
     : registered.length === 1 && !context.ambiguousContractorPhones?.length ? registered[0] : undefined;
   if (primary) parsed.brief.contractorName = `${primary.firstName} ${primary.lastName}`;
+  parsed = validateInitialIntake(parsed, context, designReview(context).count);
   if (parsed.handoff?.kind !== 'finalization') parsed.approval = null;
   if (parsed.handoff?.kind === 'finalization') {
     const review = designReview(context);

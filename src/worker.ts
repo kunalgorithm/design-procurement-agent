@@ -83,14 +83,18 @@ export class Worker {
       const context = await this.store.context(turn.conversation_id, turn.through_seq);
       if (!context) throw new Error('CONVERSATION_MISSING');
       if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }
-      const decision: Decision = turn.decision ?? (turn.kind !== 'agent'
+      const initialIntake = turn.kind === 'agent' && designReview(context).count === 0;
+      // Old persisted first-design decisions must also pass the new intake gate.
+      const legacyDesign = initialIntake && turn.decision?.handoff?.kind === 'design' && !turn.decision.intakeConfirmation;
+      const decision: Decision = legacyDesign ? validateDecision(turn.decision!, context) : turn.decision ?? (turn.kind !== 'agent'
         ? { reply: turn.operator_text, brief: context.conversation.brief, handoff: null }
         : validateDecision(await this.agent.respond(context), context));
-      if (!turn.decision) await this.store.saveDecision(turn.id, decision);
+      if (!turn.decision || legacyDesign) await this.store.saveDecision(turn.id, decision);
       // A STOP or operator pause can arrive while the model is running.
       if (await this.cancelled(turn)) {
         await this.store.cancel(turn); return true;
       }
+      if (initialIntake && await this.store.deferForNewInput(turn)) return true;
       const target = reactionTarget(context);
       if (turn.kind === 'agent' && decision.reaction && target && this.mode === 'live'
         && this.messenger.react && await this.store.claimReaction(turn.id)) {
@@ -100,12 +104,13 @@ export class Worker {
         }
       }
       let output: Decision = decision;
-      let attachments: Attachment[] = turn.generated_attachments ?? [];
+      let attachments: Attachment[] = shouldGenerateKitchen(output) ? turn.generated_attachments ?? [] : [];
       if (turn.kind === 'agent' && this.design && shouldGenerateKitchen(output)) {
         if (!turn.generated_attachments) {
           try { await this.sendUpdate(turn, 'progress', "I’m working on your kitchen design. I’ll share the image here when it’s ready."); }
           catch { this.logger.warn({ turnId: turn.id }, 'Progress update could not be sent'); }
           if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }
+          if (initialIntake && await this.store.deferForNewInput(turn)) return true;
           stage = 'image_generation';
           try { attachments = await this.design.generate(context, output); }
           catch (error) {
@@ -127,6 +132,7 @@ export class Worker {
       if (await this.cancelled(turn)) {
         await this.store.cancel(turn); return true;
       }
+      if (initialIntake && await this.store.deferForNewInput(turn)) return true;
       if (output.handoff?.kind === 'finalization' && await this.store.deferFinalization(turn)) return true;
       if ((output.reply || attachments.length) && context.conversation.channel === 'linq') {
         if (this.mode !== 'live') throw Object.assign(new Error('LIVE_SEND_DISABLED'), { status: 403 });
