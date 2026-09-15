@@ -67,7 +67,7 @@ test('review state survives truncated history and completed contractor work with
   assert.equal(designReview(ctx).finalized, null);
 });
 
-test('pilot DMs get customer context while unlabeled group roles remain unresolved', () => {
+test('unmatched DMs get customer context while unlabeled group roles remain unresolved', () => {
   const ctx = reviewContext();
   assert.match(participantContext(ctx), /treat the person texting FORM as the homeowner\/customer/);
   ctx.conversation.is_group = true;

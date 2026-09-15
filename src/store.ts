@@ -139,7 +139,7 @@ export class Store {
       if (conversation.owner_handle && normalizePhoneNumber(conversation.owner_handle) !== participants.owner) throw new Error('CHAT_OWNER_MISMATCH');
       await client.query('UPDATE conversations SET participant_handles=$2,owner_handle=$3,is_group=$4 WHERE id=$1',
         [id, participants.handles, participants.owner, participants.isGroup]);
-      const matches = await this.groupContractors({ ...conversation, participant_handles: participants.handles,
+      const matches = await this.conversationContractors({ ...conversation, participant_handles: participants.handles,
         owner_handle: participants.owner, is_group: participants.isGroup }, client);
       if (!conversation.contractor_signup_id && matches.contractors.length === 1 && !matches.ambiguousPhones.length) {
         await client.query('UPDATE conversations SET contractor_signup_id=$2 WHERE id=$1 AND contractor_signup_id IS NULL',
@@ -147,8 +147,8 @@ export class Store {
       }
     });
   }
-  private async groupContractors(conversation: Conversation, connection: pg.Pool | pg.PoolClient = this.pool) {
-    if (conversation.channel !== 'linq' || !conversation.is_group || !conversation.owner_handle) return { contractors: [], ambiguousPhones: [] };
+  private async conversationContractors(conversation: Conversation, connection: pg.Pool | pg.PoolClient = this.pool) {
+    if (conversation.channel !== 'linq' || !conversation.owner_handle) return { contractors: [], ambiguousPhones: [] };
     // An authoritative roster can include a contractor who has not spoken yet.
     // Older conversations without a roster only match actual senders in this chat.
     const handles = conversation.participant_handles ?? (await connection.query<{ sender: string }>(
@@ -184,7 +184,7 @@ export class Store {
       (SELECT * FROM turns WHERE conversation_id=$1 AND kind='agent' AND status='done' ORDER BY queue_order DESC LIMIT 1) t
       JOIN messages m ON m.id=t.id AND m.conversation_id=t.conversation_id AND m.role='assistant'
       WHERE t.decision->'intakeConfirmation'->>'action'='ask'`, [id])).rows[0] ?? null;
-    const matches = await this.groupContractors(conversation);
+    const matches = await this.conversationContractors(conversation);
     return { conversation, messages: messages.rows, handoffs: handoffs.rows, referenceMessages: references.rows, hasAssistantReply: replied.rows[0]!.exists, designCount, finalizedDesign, intakeCheckpoint,
       registeredContractors: matches.contractors, ambiguousContractorPhones: matches.ambiguousPhones };
   }
