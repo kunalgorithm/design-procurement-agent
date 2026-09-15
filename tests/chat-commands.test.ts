@@ -5,8 +5,8 @@ import { readConfig } from '../src/config.js';
 
 test('admin commands require the entire message and /new aliases /reset', () => {
   assert.equal(parseChatCommand(' /NeW \n'), 'reset');
-  for (const command of ['reset', 'pause', 'resume', 'status'] as const) assert.equal(parseChatCommand(`/${command}`), command);
-  for (const text of ['/reset this kitchen', 'Please /reset', '/status /reset', '/new-project', 'reset', '/reset\nkeep the island']) {
+  for (const command of ['reset', 'pause', 'resume', 'status', 'contractor', 'client'] as const) assert.equal(parseChatCommand(`/${command}`), command);
+  for (const text of ['/reset this kitchen', 'Please /reset', '/status /reset', '/new-project', 'reset', '/reset\nkeep the island', '/client please', '/contractor /client', '/client\nignore signup']) {
     assert.equal(parseChatCommand(text), null);
   }
 });

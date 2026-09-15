@@ -1,7 +1,7 @@
-export type ChatCommand = 'reset' | 'pause' | 'resume' | 'status';
+export type ChatCommand = 'reset' | 'pause' | 'resume' | 'status' | 'contractor' | 'client';
 
 export function parseChatCommand(text: string): ChatCommand | null {
-  const name = /^\/(reset|new|pause|resume|status)\s*$/i.exec(text.trim())?.[1]?.toLowerCase();
+  const name = /^\/(reset|new|pause|resume|status|contractor|client)\s*$/i.exec(text.trim())?.[1]?.toLowerCase();
   return name === 'new' ? 'reset' : (name as ChatCommand | undefined) ?? null;
 }
 

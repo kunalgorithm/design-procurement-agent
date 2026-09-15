@@ -53,7 +53,7 @@ after(async () => { await pool.end(); await admin.query(`DROP SCHEMA ${schema} C
 
 test('migrations are repeatable', async () => {
   await migrate(pool);
-  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '7');
+  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '8');
 });
 
 test('finalization saves the exact image, customer evidence and choices once across a delivery retry', async () => {

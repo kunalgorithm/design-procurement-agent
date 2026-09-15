@@ -12,7 +12,7 @@ The editable conversation prompt lives in [`prompts/designer.md`](prompts/design
 - PostgreSQL conversation history, project briefs, handoffs, and durable queued replies.
 - Debouncing, duplicate-event protection, per-chat serialization, retries, and stable Linq send idempotency keys.
 - Human takeover, pause/resume, explicit STOP handling, operator messages, and failed-turn inspection.
-- Phone-restricted `/reset` (`/new`), `/pause`, `/resume`, and `/status` commands in live chats.
+- Phone-restricted `/reset` (`/new`), `/pause`, `/resume`, and `/status` commands in live chats, plus private `/contractor` and `/client` role sessions.
 - A public contractor landing page and signup flow, with a Messages handoff and downloadable FORM contact card.
 - A sandbox web UI and `npm run chat` that exercise the same backend without sending real texts.
 - Render Blueprint, PostgreSQL, health checks, graceful shutdown, and deployment after GitHub checks pass.
@@ -103,7 +103,7 @@ Before switching live, the webhook endpoint returns 503. Complete configuration 
 
 Signup accepts an optional company/practice name (`businessName`); previous signups continue working when it is absent. Contractors must use the phone they registered and the FORM number assigned at signup. Initial direct-message turns and every group turn read Linq's current [chat participants](https://docs.linqapp.com/channel/imessage/api/resources/chats/methods/retrieve/), excluding owned, removed, and departed handles. It resolves phone matches within that assigned line, including a contractor who has not spoken yet in a group. Signup lookup runs on every context load, so an existing DM with a cached roster also recognizes a later signup without resetting the chat. Apple ID emails, names typed into messages, and other participants' numbers do not become phone matches. Identical signup retries resolve to one identity; conflicting records remain unresolved. These are signup details, not a license or professional-identity verification.
 
-The first useful reply acknowledges the known contractor, mentions their practice only when saved, and introduces FORM. It collects missing project details in the group, directs measurements to the contractor and preferences to the homeowner, and summarizes the brief and waits for a reply to its final intake question before the first design. Details arrive in any order; corrections and attachments remain tied to this group's conversation. Direct messages use the same first-design intake sequence. Unregistered participants are not automatically designated homeowners, and registered contractors cannot approve a design on a homeowner's behalf.
+The first useful group reply introduces FORM to the client as working with their known contractor, mentioning the practice only when saved. Private contractor chats skip the introduction and signup acknowledgment: FORM already works for them and gets straight to their client project. It collects missing project details in the group, directs measurements to the contractor and preferences to the homeowner, and summarizes the brief and waits for a reply to its final intake question before the first design. Details arrive in any order; corrections and attachments remain tied to this group's conversation. Direct messages use the same first-design intake sequence. Unregistered participants are not automatically designated homeowners, and registered contractors cannot approve a design on a homeowner's behalf.
 
 Migration `007_group_contractors.sql` is additive: it adds practice names, a current participant roster, an indexed signup lookup, and a nullable contractor assignment. A single unambiguous contractor is linked to the project; with multiple candidates FORM asks who is leading rather than assigning arbitrarily. A roster refresh does not move a project's ownership to a new contractor. `/new` starts another project in the same Messages thread and resolves its participants again. Group names are display-only; the Linq chat ID routes messages. Existing duplicate-event protection, burst grouping, retries, and saved decisions still apply. A temporary roster lookup failure retries before asking the model or sending a reply. Only model context receives the contractor's name and practice; signup email and license are excluded.
 
@@ -133,14 +133,18 @@ Send a command as the entire message, without attachments. Commands apply to the
 
 | Command | Effect |
 | --- | --- |
-| `/reset` or `/new` | Archive the current session and start fresh in the same Messages thread. Clear the agent's active brief, image references, and handoffs; cancel unfinished work from the previous session. |
+| `/reset` or `/new` | Archive the current session and start fresh in the same Messages thread. Clear the agent's active brief, image references, and handoffs; cancel unfinished work from the previous session. Clear any selected role and return to normal signup recognition. |
+| `/contractor` | Private chats only: start a fresh project with you as the contractor. FORM skips its introduction and helps with your client project. |
+| `/client` | Private chats only: start a fresh project with you as the client, even if your number has a contractor signup. FORM introduces itself and begins client intake. |
 | `/pause` | Pause automatic replies and cancel pending or running agent turns. |
 | `/resume` | Enable automatic replies for the next incoming message. Cancelled work is not replayed. |
-| `/status` | Report active/paused state, working/queued/failed agent request counts, and open handoff types for this chat. |
+| `/status` | Report active/paused state, working/queued/failed agent request counts, open handoff types, and your role in a private chat. |
 
 `LINQ_ADMIN_NUMBERS` contains the allowed sender phone numbers. Set this privately in the Render service environment as a comma-separated list of international phone numbers; the Blueprint leaves its value unmanaged. Keep real admin phone numbers out of this public repository. An empty or missing setting grants nobody admin-command access. This list is separate from `LINQ_ALLOWED_HANDLES`, which filters FORM's owned messaging lines.
 
 Authorization uses the sender phone handle from a verified Linq webhook, never the message text, a display name, or the group's owned line. Unlisted senders receive an access-denied reply without changing the chat. Commands are handled in the backend without a model call, work while paused, and have durable, idempotent confirmations. Command messages and confirmations are retained for audit but excluded from the model's conversation context. The ordinary `STOP` opt-out remains available to every participant.
+
+Role commands use the same reset flow: a fresh project inside the existing Messages thread, with old context archived and unfinished work cancelled. The choice is bound to the authenticated sender and this private session, survives restarts, and never updates signup records or roles in other chats. `/new` returns to normal signup recognition. Group chats reject role switches. Migration `008_private_chat_roles.sql` adds nullable session fields and leaves existing sessions unchanged.
 
 Reset archives the earlier session instead of deleting the Messages transcript or stored project history. The admin API can list archives with `GET /api/conversations?archived=true` and inspect one by its conversation ID. Its handoffs no longer appear in the active work list. New messages use only the fresh session. A pause or reset prevents later sends from cancelled work but cannot recall a message Linq has already accepted.
 
@@ -229,7 +233,7 @@ Conversation content and briefs live in PostgreSQL. OpenAI requests use `store:f
 
 The prompt is reread on each turn, so local prompt edits take effect immediately. Use **New chat** in the web UI or `npm run chat` with `/new` to compare a fresh conversation. In production, commit and push to `main` to send changes through CI and Render.
 
-To change FORM's personality, edit **Voice**, **First conversation reply**, and **Message reactions** in `prompts/designer.md`. The default introduction is "Hi, I'm FORM. I'm an AI agent that can help you design your new kitchen." It appears in the first useful text reply for each conversation; existing chats keep their history and do not restart the introduction. A new sandbox chat is the simplest way to preview it.
+To change FORM's personality, edit **Voice**, **First conversation reply**, and **Message reactions** in `prompts/designer.md`. The default introduction is "Hi, I'm FORM. I'm an AI agent that can help you design your new kitchen." It appears in the first useful client-facing reply; private contractor chats skip it, and existing chats keep their history and do not restart the introduction. A new sandbox chat is the simplest way to preview it.
 
 FORM can add an occasional ❤️, 👍, 😊, 🙌, ✨, or 👋 reaction to the latest incoming iMessage, including in groups. Reactions are separate from emojis in reply text. SMS and sandbox chats skip native reactions. Each turn attempts its reaction at most once; a reaction failure is logged and does not block the reply. To change the allowed emoji set, update `reactionSchema` in `src/domain.ts` as well as the prompt. These personality settings do not change `OPENAI_MODEL` (`gpt-5.6-terra`).
 

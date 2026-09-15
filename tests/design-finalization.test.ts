@@ -91,3 +91,15 @@ test('legacy decisions remain readable and non-finalization cannot carry approva
   const ctx = reviewContext(); const output = approve(ctx); output.handoff = null;
   assert.equal(validateDecision(output, ctx).approval, null);
 });
+
+test('admin client selection can approve its private design but cannot approve as a contractor or in a group', () => {
+  const ctx = reviewContext();
+  const phone = ctx.messages[1]!.sender;
+  ctx.registeredContractors = [{ id: randomUUID(), phone, firstName: 'Sam', lastName: 'Rivera', businessName: null, website: null }];
+  ctx.conversation.role_override_sender = phone; ctx.conversation.role_override = 'homeowner';
+  assert.equal(validateDecision(approve(ctx), ctx).handoff?.kind, 'finalization');
+  ctx.conversation.role_override = 'contractor';
+  assert.equal(validateDecision(approve(ctx), ctx).handoff, null);
+  ctx.conversation.role_override = 'homeowner'; ctx.conversation.is_group = true;
+  assert.equal(validateDecision(approve(ctx), ctx).handoff, null);
+});

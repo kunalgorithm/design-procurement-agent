@@ -80,3 +80,29 @@ test('contractor DMs receive signup identity instead of the customer default, in
   ctx.registeredContractors = [];
   assert.match(participantContext(ctx), /treat the person texting FORM as the homeowner\/customer/);
 });
+
+test('private client selection overrides signup only for its bound sender and session', () => {
+  const ctx = context(); ctx.conversation.is_group = false;
+  ctx.conversation.role_override = 'homeowner'; ctx.conversation.role_override_sender = contractor.phone;
+  ctx.registeredContractors = [contractor];
+  assert.equal(identifiedSenderRole(ctx, '+1 (202) 555-0101'), 'homeowner');
+  assert.equal(identifiedSenderRole(ctx, '+12025550102'), null);
+  assert.equal(identifiedSenderRole(ctx, 'sam@example.com'), null);
+  assert.equal(validateDecision(decision(), ctx).brief.contractorName, null);
+  assert.doesNotMatch(participantContext(ctx), /Sam|Example Kitchens/);
+  ctx.conversation.is_group = true;
+  assert.equal(identifiedSenderRole(ctx, contractor.phone), 'contractor');
+  assert.equal(validateDecision(decision(), ctx).brief.contractorName, 'Sam Rivera');
+  ctx.conversation.is_group = false; ctx.conversation.channel = 'sandbox'; ctx.registeredContractors = [];
+  assert.equal(identifiedSenderRole(ctx, contractor.phone), null);
+});
+
+test('first private contractor replies skip introductions but group client replies still introduce FORM', () => {
+  const ctx = context(); ctx.registeredContractors = [contractor]; ctx.hasAssistantReply = false;
+  ctx.conversation.is_group = false;
+  assert.match(participantContext(ctx), /Do not introduce yourself to the contractor/);
+  assert.doesNotMatch(participantContext(ctx), /Introduce yourself in your first text reply/);
+  ctx.conversation.is_group = true;
+  assert.match(participantContext(ctx), /Introduce FORM to the client/);
+  assert.match(participantContext(ctx), /Introduce yourself in your first text reply/);
+});

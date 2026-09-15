@@ -11,7 +11,7 @@ import { Store } from '../../src/store.js';
 import { Worker } from '../../src/worker.js';
 import { createApp } from '../../src/app.js';
 import { readConfig } from '../../src/config.js';
-import type { Agent, Attachment, Messenger } from '../../src/domain.js';
+import { identifiedSenderRole, participantContext, type Agent, type Attachment, type Messenger } from '../../src/domain.js';
 import type { DesignStudio } from '../../src/design.js';
 import { incoming, decision, event, sign, webhookSecret } from '../fixtures.js';
 
@@ -42,8 +42,99 @@ async function deliver(payload: ReturnType<typeof event>, server = app) {
 const command = (text: string, sender = kunal, chat: string = randomUUID(), group = true) => deliver(commandEvent(text,sender,chat,group));
 
 before(async () => { await admin.query(`CREATE SCHEMA ${schema}`); await migrate(pool); });
-beforeEach(async () => { await pool.query('TRUNCATE conversations,webhook_events CASCADE'); sent.length = 0; });
+beforeEach(async () => { await pool.query('TRUNCATE conversations,contractor_signups,webhook_events CASCADE'); sent.length = 0; });
 after(async () => { await pool.end(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); });
+
+test('private role sessions survive restart, leave signup and other chats unchanged, and /new restores recognition', async () => {
+  await store.registerContractor({ submissionId: randomUUID(), firstName: 'Sam', lastName: 'Rivera', phone: kunal,
+    email: 'sam@example.com', businessName: 'Example Kitchens' }, '+12025550100');
+  const before = (await pool.query('SELECT * FROM contractor_signups')).rows;
+  const other = await store.ingest(incoming({ isGroup: false, text: 'Another client project' }), 'linq');
+  const group = await store.ingest(incoming({ text: 'A group project' }), 'linq');
+  await store.pause(other.conversationId!, true); await store.pause(group.conversationId!, true);
+  const chat = randomUUID();
+  for (const [name, role] of [['/client', 'homeowner'], ['/contractor', 'contractor']] as const) {
+    const payload = commandEvent(name, '+1 (202) 555-0101', chat, false);
+    const receipts = await Promise.all([deliver(payload), deliver(payload), deliver(payload)]);
+    const id = receipts[0].conversationId;
+    assert.ok(receipts.every((receipt) => receipt.conversationId === id && receipt.turnId === receipts[0].turnId));
+    await worker().tick();
+    assert.match(sent.at(-1)!.text, /fresh project/);
+    await store.syncChatParticipants(id, { handles: [kunal], owner: '+12025550100', isGroup: false });
+    const next = await store.ingest(incoming({ chatId: chat, isGroup: false, text: 'Hi' }), 'linq');
+    assert.equal(next.conversationId, id);
+    const restarted = (await new Store(pool).context(id))!;
+    assert.equal(identifiedSenderRole(restarted, kunal), role);
+    assert.equal(restarted.conversation.role_override_sender, kunal);
+    assert.equal(restarted.hasAssistantReply, false);
+    assert.deepEqual(restarted.messages.map((message) => message.text), ['Hi']);
+    if (role === 'homeowner') {
+      assert.equal(restarted.registeredContractors?.length, 0);
+      assert.equal(restarted.conversation.contractor_signup_id, null);
+      assert.doesNotMatch(participantContext(restarted), /Sam|Example Kitchens/);
+      assert.match(participantContext(restarted), /Introduce yourself in your first text reply/);
+    } else {
+      assert.equal(restarted.registeredContractors?.[0]?.firstName, 'Sam');
+      assert.match(participantContext(restarted), /Do not introduce yourself to the contractor/);
+    }
+    await store.pause(id, true);
+    await command('/status', kunal, chat, false); await worker().tick();
+    assert.match(sent.at(-1)!.text, new RegExp(`Your role: ${name.slice(1)} \\(selected for this project\\)`));
+    assert.equal(identifiedSenderRole((await store.context(other.conversationId!))!, kunal), 'contractor');
+    assert.equal(identifiedSenderRole((await store.context(group.conversationId!))!, kunal), 'contractor');
+  }
+  const reset = await command('/new', kunal, chat, false); await worker().tick();
+  assert.match(sent.at(-1)!.text, /usual role is restored/);
+  const restored = (await new Store(pool).context(reset.conversationId))!;
+  assert.equal(restored.conversation.role_override, null);
+  assert.equal(restored.conversation.role_override_sender, null);
+  assert.equal(identifiedSenderRole(restored, kunal), 'contractor');
+  assert.deepEqual((await pool.query('SELECT * FROM contractor_signups')).rows, before);
+});
+
+test('both admins can select a private contractor role without a signup', async () => {
+  for (const sender of [kunal, danny]) {
+    const chat = randomUUID();
+    const result = await command('/contractor', sender, chat, false); await worker().tick();
+    await store.ingest(incoming({ sender, chatId: chat, isGroup: false, text: 'Hi' }), 'linq');
+    const ctx = (await store.context(result.conversationId))!;
+    assert.equal(identifiedSenderRole(ctx, sender), 'contractor');
+    assert.equal(ctx.registeredContractors?.length, 0);
+    assert.match(participantContext(ctx), /Do not introduce yourself to the contractor/);
+    assert.doesNotMatch(participantContext(ctx), /Introduce yourself in your first text reply/);
+    await store.pause(result.conversationId, true);
+  }
+});
+
+test('role switches reject groups using both stored and incoming group state', async () => {
+  for (const [storedGroup, incomingGroup] of [[true, true], [true, false], [false, true]]) {
+    const chat = randomUUID();
+    const original = await store.ingest(incoming({ chatId: chat, isGroup: storedGroup }), 'linq');
+    await store.pause(original.conversationId!, true);
+    for (const name of ['/client', '/contractor']) {
+      const result = await command(name, kunal, chat, incomingGroup);
+      assert.equal(result.conversationId, original.conversationId);
+      await worker().tick();
+      assert.match(sent.at(-1)!.text, /private chat/);
+      assert.equal((await store.getConversation(result.conversationId))?.role_override, null);
+      assert.equal((await store.getConversation(result.conversationId))?.paused, true);
+    }
+  }
+  assert.equal((await store.listConversations(true)).length, 0);
+});
+
+test('role commands require sender authorization and no attachments in a private chat', async () => {
+  for (const name of ['/client', '/contractor']) {
+    for (const allowed of [true, false]) {
+      const payload = commandEvent(name, allowed ? kunal : '+12025550199', randomUUID(), false);
+      if (allowed) payload.data.parts.push({ type: 'media', id: 'photo', url: 'https://cdn.linqapp.com/photo.jpg', mime_type: 'image/jpeg' });
+      const result = await deliver(payload); await worker().tick();
+      assert.match(sent.at(-1)!.text, allowed ? /without attachments/ : /only to FORM admins/);
+      assert.equal((await store.getConversation(result.conversationId))?.role_override, null);
+    }
+  }
+  assert.equal((await store.listConversations(true)).length, 0);
+});
 
 test('both configured admins can pause and resume group and direct chats without a model call', async () => {
   for (const [sender,group] of [[kunal,true],[danny,false]] as const) {
@@ -72,7 +163,7 @@ test('unlisted senders cannot reset, pause, resume, or inspect status, even if t
   await worker().tick();
   assert.equal((await store.getConversation(original.conversationId!))?.paused, false);
   await store.pause(original.conversationId!, true);
-  for (const text of ['/reset','/new','/pause','/resume','/status']) {
+  for (const text of ['/reset','/new','/pause','/resume','/status','/contractor','/client']) {
     const payload = commandEvent(text, '+12025550199', chat);
     payload.data.chat.owner_handle.handle = kunal;
     const result = await deliver(payload);
@@ -99,17 +190,18 @@ test('commands require a valid signed webhook and configured sender, including f
   assert.equal((await store.listConversations())[0]?.paused, true);
 });
 
-test('/reset and /new archive the full old session and route later messages to fresh context', async () => {
-  for (const name of ['/reset','/new']) {
+test('reset and role commands archive the full old session and route later messages to fresh context', async () => {
+  for (const name of ['/reset','/new','/client','/contractor']) {
+    const group = name === '/reset' || name === '/new';
     const chat = randomUUID();
-    const original = await prepareFirstDesign(store, incoming({ chatId: chat, text: '123 Example St, use oak' }), 'linq');
+    const original = await prepareFirstDesign(store, incoming({ chatId: chat, isGroup: group, text: '123 Example St, use oak' }), 'linq');
     const render: Attachment = { id: randomUUID(), url: '/unused-test-image', mimeType: 'image/jpeg', filename: 'design.jpg', sizeBytes: 4 };
     const brief = { ...decision().brief, propertyAddress: '123 Example St', style: 'Oak' };
     await worker({ async respond(ctx) { return confirmedDesign(ctx, decision({ brief, handoff: { kind: 'design', summary: 'Old design' } })); } },messenger,{ async generate() { return [render]; } }).tick();
     await store.saveMedia(original.conversationId!, render, Buffer.from([0xff,0xd8,0xff,0xd9]));
-    const pending = await store.ingest(incoming({ chatId: chat, text: 'Old revision' }), 'linq');
+    const pending = await store.ingest(incoming({ chatId: chat, isGroup: group, text: 'Old revision' }), 'linq');
     const operator = await store.queueOperator(original.conversationId!, 'Old operator reply', randomUUID());
-    const payload = commandEvent(name, danny, chat);
+    const payload = commandEvent(name, danny, chat, group);
     const reset = await deliver(payload);
     assert.notEqual(reset.conversationId, original.conversationId);
     assert.equal((await store.getTurn(pending.turnId!))?.status, 'cancelled');
@@ -122,12 +214,12 @@ test('/reset and /new archive the full old session and route later messages to f
     const sameMessage = structuredClone(payload); sameMessage.event_id = randomUUID();
     assert.equal((await deliver(sameMessage)).turnId, reset.turnId);
     await worker().tick();
-    assert.equal(sent.at(-1)!.text, 'Started a fresh conversation.');
+    assert.match(sent.at(-1)!.text, group ? /Started a fresh conversation/ : /Started a fresh project/);
     const ctx = await store.context(reset.conversationId);
     assert.deepEqual(ctx?.conversation.brief, decision().brief);
     assert.equal(ctx?.messages.length, 0); assert.equal(ctx?.referenceMessages?.length, 0);
     assert.equal(ctx?.handoffs.length, 0); assert.equal(ctx?.hasAssistantReply, false);
-    const next = await store.ingest(incoming({ chatId: chat, text: 'New project' }), 'linq');
+    const next = await store.ingest(incoming({ chatId: chat, sender: danny, isGroup: group, text: 'New project' }), 'linq');
     assert.equal(next.conversationId, reset.conversationId);
     await worker({ async respond(context) {
       assert.deepEqual(context.messages.map((message) => message.text), ['New project']);
@@ -143,8 +235,8 @@ test('/reset and /new archive the full old session and route later messages to f
   }
 });
 
-test('/status works during rendering and a reset suppresses the old result', async () => {
-  const chat = randomUUID(); const original = await prepareFirstDesign(store, incoming({ chatId: chat }), 'linq');
+for (const resetCommand of ['/new', '/client', '/contractor']) test(`/status works during rendering and ${resetCommand} suppresses the old result`, async () => {
+  const chat = randomUUID(); const original = await prepareFirstDesign(store, incoming({ chatId: chat, isGroup: false }), 'linq');
   let release!: () => void; let entered!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   const started = new Promise<void>((resolve) => { entered = resolve; });
@@ -153,12 +245,12 @@ test('/status works during rendering and a reset suppresses the old result', asy
     { async generate() { entered(); await gate; return [render]; } }).tick();
   await started;
   try {
-    await command('/status',kunal,chat);
+    await command('/status',kunal,chat,false);
     await worker().tick();
     assert.match(sent.at(-1)!.text, /1 working/);
-    const reset = await command('/new',danny,chat);
+    const reset = await command(resetCommand,danny,chat,false);
     await worker().tick();
-    assert.match(sent.at(-1)!.text, /fresh conversation/);
+    assert.match(sent.at(-1)!.text, /fresh (conversation|project)/);
     release(); await run;
     assert.equal(sent.some((item) => item.text === 'Old result' || item.attachments.length), false);
     assert.equal((await store.getTurn(original.turnId!))?.status, 'cancelled');
@@ -248,6 +340,7 @@ test('upgrading an existing database preserves projects and does not notify hist
     await migrate(upgraded);
     const migrated = new Store(upgraded,0);
     assert.deepEqual((await migrated.context(id))?.conversation.brief,brief);
+    assert.equal((await migrated.getConversation(id))?.role_override, null);
     assert.equal((await migrated.context(id))?.messages[0]?.text,'Saved project');
     assert.ok((await migrated.getTurn(failed))?.failure_notified_at);
     assert.equal(await migrated.claim(),null);

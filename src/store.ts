@@ -5,7 +5,7 @@ import type { contractorSignupSchema } from './contractor-schema.js';
 import { transaction } from './db.js';
 import { normalizePhoneNumber, parseChatCommand, type ChatCommand } from './chat-commands.js';
 import { contractorMatches, type RegisteredContractor } from './group-contractors.js';
-import { emptyBrief, isStopRequest, selfIdentifiedRole, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext, type Attachment, type ChatParticipants } from './domain.js';
+import { emptyBrief, isStopRequest, selfIdentifiedRole, privateRoleOverride, identifiedSenderRole, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext, type Attachment, type ChatParticipants } from './domain.js';
 
 export interface Turn {
   id: string; conversation_id: string; kind: 'agent' | 'operator' | 'control';
@@ -61,7 +61,7 @@ export class Store {
       const seen = await client.query('INSERT INTO webhook_events(id) VALUES($1) ON CONFLICT DO NOTHING RETURNING id', [`${channel}:${message.eventId}`]);
       if (!seen.rowCount) return this.duplicateReceipt(client, message, channel);
       const result = await client.query<Conversation>(`INSERT INTO conversations(external_id,channel,is_group,owner_handle,brief)
-        VALUES($1,$2,$3,$4,$5) ON CONFLICT(channel,external_id) WHERE archived_at IS NULL DO UPDATE SET updated_at=now()
+        VALUES($1,$2,$3,$4,$5) ON CONFLICT(channel,external_id) WHERE archived_at IS NULL DO UPDATE SET updated_at=now(),is_group=conversations.is_group OR EXCLUDED.is_group
         RETURNING *`, [message.chatId, channel, message.isGroup, message.owner, JSON.stringify(emptyBrief())]);
       const conversation = result.rows[0]!;
       const inserted = await client.query<Message>(`INSERT INTO messages(conversation_id,external_id,role,sender,text,attachments,provider_sent_at,service,is_control)
@@ -96,17 +96,24 @@ export class Store {
   private async handleCommand(client: pg.PoolClient, conversation: Conversation, message: Message, command: ChatCommand, authorized: boolean) {
     let current = conversation;
     let reply: string;
+    const changingRole = command === 'contractor' || command === 'client';
     if (!authorized) {
       reply = 'That command is available only to FORM admins.';
     } else if (message.attachments.length) {
       reply = 'Send the command on its own, without attachments.';
-    } else if (command === 'reset') {
+    } else if (changingRole && current.is_group) {
+      reply = 'Send /contractor or /client in a private chat with FORM. Roles in this group stay unchanged.';
+    } else if (changingRole && !normalizePhoneNumber(message.sender)) {
+      reply = 'Send this command from your admin phone number.';
+    } else if (command === 'reset' || changingRole) {
       await client.query('UPDATE conversations SET archived_at=now(),paused=true,updated_at=now() WHERE id=$1', [current.id]);
       await client.query("UPDATE turns SET status='cancelled',completed_at=now(),lease_until=NULL WHERE conversation_id=$1 AND status IN ('pending','processing','failed')", [current.id]);
-      current = (await client.query<Conversation>(`INSERT INTO conversations(external_id,channel,is_group,owner_handle,brief)
-        VALUES($1,$2,$3,$4,$5) RETURNING *`, [current.external_id,current.channel,current.is_group,current.owner_handle,JSON.stringify(emptyBrief())])).rows[0]!;
+      current = (await client.query<Conversation>(`INSERT INTO conversations(external_id,channel,is_group,owner_handle,brief,role_override,role_override_sender)
+        VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`, [current.external_id,current.channel,current.is_group,current.owner_handle,JSON.stringify(emptyBrief()),
+        changingRole ? (command === 'client' ? 'homeowner' : 'contractor') : null, changingRole ? normalizePhoneNumber(message.sender) : null])).rows[0]!;
       await client.query('UPDATE messages SET conversation_id=$2 WHERE id=$1', [message.id,current.id]);
-      reply = 'Started a fresh conversation.';
+      reply = changingRole ? `Started a fresh project with you as the ${command}. Send a message to begin. /new restores your usual role.`
+        : conversation.role_override ? 'Started a fresh conversation. Your usual role is restored.' : 'Started a fresh conversation.';
     } else if (command === 'pause' || command === 'resume') {
       const paused = command === 'pause';
       current = (await client.query<Conversation>('UPDATE conversations SET paused=$2,updated_at=now() WHERE id=$1 RETURNING *', [current.id,paused])).rows[0]!;
@@ -120,6 +127,12 @@ export class Store {
         FROM turns WHERE conversation_id=$1 AND kind='agent'`, [current.id])).rows[0]!;
       const handoffs = (await client.query<Handoff>("SELECT kind FROM handoffs WHERE conversation_id=$1 AND status='open' ORDER BY created_at", [current.id])).rows;
       reply = `FORM is ${current.paused ? 'paused' : 'active'} in this chat. Requests: ${counts.working} working, ${counts.queued} queued, ${counts.failed} failed. Open handoffs: ${handoffs.map((task) => task.kind).join(', ') || 'none'}.`;
+      if (!current.is_group) {
+        const matches = await this.conversationContractors(current, client);
+        const role = identifiedSenderRole({ conversation: current, messages: [], handoffs: [], registeredContractors: matches.contractors }, message.sender);
+        const label = role === 'homeowner' ? 'client' : role ?? (matches.ambiguousPhones.length ? 'unconfirmed' : 'client');
+        reply += ` Your role: ${label}${privateRoleOverride(current, message.sender) ? ' (selected for this project)' : ''}.`;
+      }
     }
     const turn = (await client.query<Turn>(`INSERT INTO turns(conversation_id,kind,through_seq,operator_text)
       VALUES($1,'control',$2,$3) RETURNING *`, [current.id,message.seq,reply])).rows[0]!;
@@ -153,7 +166,7 @@ export class Store {
     // Older conversations without a roster only match actual senders in this chat.
     const handles = conversation.participant_handles ?? (await connection.query<{ sender: string }>(
       "SELECT DISTINCT sender FROM messages WHERE conversation_id=$1 AND role='user'", [conversation.id])).rows.map((row) => row.sender);
-    const phones = handles.map(normalizePhoneNumber).filter((phone): phone is string => !!phone);
+    const phones = handles.map(normalizePhoneNumber).filter((phone): phone is string => !!phone && privateRoleOverride(conversation, phone) !== 'homeowner');
     const rows = await connection.query<RegisteredContractor>(`SELECT id,phone,first_name AS "firstName",last_name AS "lastName",
       business_name AS "businessName",website FROM contractor_signups WHERE agent_phone=$1 AND phone=ANY($2::text[])
       ORDER BY created_at,id`, [normalizePhoneNumber(conversation.owner_handle), phones]);
@@ -219,7 +232,7 @@ export class Store {
       await client.query('DELETE FROM handoffs WHERE conversation_id=$1', [id]);
       await client.query('DELETE FROM turns WHERE conversation_id=$1', [id]);
       await client.query('DELETE FROM messages WHERE conversation_id=$1', [id]);
-      return (await client.query<Conversation>("UPDATE conversations SET brief=$2,participant_roles='{}'::jsonb,paused=false,updated_at=now() WHERE id=$1 RETURNING *",
+      return (await client.query<Conversation>("UPDATE conversations SET brief=$2,participant_roles='{}'::jsonb,role_override=NULL,role_override_sender=NULL,paused=false,updated_at=now() WHERE id=$1 RETURNING *",
         [id, JSON.stringify(emptyBrief())])).rows[0];
     });
   }
