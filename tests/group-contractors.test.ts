@@ -68,3 +68,15 @@ test('Linq roster includes silent members, excludes owned/removed handles, and p
   });
   await assert.rejects(() => messenger.chatParticipants(id, '+12025550999'), /CHAT_OWNER_MISMATCH/);
 });
+
+test('contractor DMs receive signup identity instead of the customer default, including existing chats', () => {
+  const ctx = context(); ctx.conversation.is_group = false; ctx.hasAssistantReply = true;
+  ctx.registeredContractors = [{ ...contractor, businessName: null }];
+  ctx.conversation.participant_roles = { [contractor.phone]: 'homeowner' };
+  assert.equal(identifiedSenderRole(ctx, contractor.phone), 'contractor');
+  const prompt = participantContext(ctx);
+  assert.match(prompt, /Sam/); assert.match(prompt, /registered contractor/); assert.match(prompt, /correct that assumption/);
+  assert.match(prompt, /"businessName":null/); assert.doesNotMatch(prompt, /treat the person texting FORM as the homeowner/);
+  ctx.registeredContractors = [];
+  assert.match(participantContext(ctx), /treat the person texting FORM as the homeowner\/customer/);
+});

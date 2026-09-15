@@ -130,3 +130,60 @@ test('message bursts keep both senders, photos, and corrections in one model tur
   assert.equal(ctx?.messages[2]?.text, 'Correction: width is 13 ft.'); assert.equal(await worker.tick(), false);
   assert.equal((await store.context(ctx!.conversation.id))?.conversation.brief.reportedMeasurements, '13 ft');
 });
+
+for (const cachedRoster of [false, true]) test(`direct-message signup recognition works with ${cachedRoster ? 'an existing cached roster and later signup' : 'a first signed greeting'}`, async () => {
+  const payload = event(); payload.data.chat.is_group = false;
+  payload.data.chat.owner_handle.handle = line; payload.data.sender_handle.handle = contractorPhone;
+  payload.data.parts = [{ type: 'text', value: 'Hi' }];
+  const app = createApp(config, store); const body = JSON.stringify(payload);
+  const receipt = await request(app).post('/webhooks/linq').set(sign(body)).set('Content-Type', 'application/json').send(body).expect(200);
+  const dmRoster = { ...roster, isGroup: false, handles: [contractorPhone] };
+  if (cachedRoster) {
+    await store.syncChatParticipants(receipt.body.conversationId, dmRoster);
+    assert.equal((await store.context(receipt.body.conversationId))?.registeredContractors?.length, 0);
+  }
+  await signup(); await signup(); // Identical repeated signup must still resolve once.
+  let models = 0; let sends = 0; let rosterReads = 0;
+  const worker = new Worker(store, { async respond(ctx) {
+    models++;
+    assert.equal(ctx.conversation.is_group, false);
+    assert.equal(ctx.registeredContractors?.length, 1);
+    assert.equal(identifiedSenderRole(ctx, contractorPhone), 'contractor');
+    assert.match(participantContext(ctx), /Example Kitchens/);
+    assert.match(participantContext(ctx), /person texting you is a registered contractor/);
+    assert.doesNotMatch(participantContext(ctx), /treat the person texting FORM as the homeowner/);
+    return decision({ reply: 'Hi Sam, I have your contractor signup at Example Kitchens. How can I help with a client project?' });
+  } }, { async chatParticipants() { rosterReads++; return dmRoster; }, async send() { sends++; return randomUUID(); } }, pino({ level: 'silent' }), 100, 'live');
+  await worker.tick();
+  assert.equal(models, 1); assert.equal(sends, 1); assert.equal(rosterReads, cachedRoster ? 0 : 1);
+  const ctx = await new Store(pool).context(receipt.body.conversationId);
+  assert.equal(ctx?.conversation.brief.contractorName, 'Sam Rivera');
+  assert.equal(ctx?.registeredContractors?.[0]?.firstName, 'Sam');
+  if (!cachedRoster) assert.ok(ctx?.conversation.contractor_signup_id);
+});
+
+test('direct messages match only the actual participant on their assigned line', async () => {
+  await signup();
+  for (const [sender, owner, channel] of [
+    [homeownerPhone, line, 'linq'],
+    ['sam@example.com', line, 'linq'],
+    [contractorPhone, '+12025550100', 'linq'],
+    [contractorPhone, line, 'sandbox'],
+  ] as const) {
+    const queued = await store.ingest(incoming({ sender, owner, isGroup: false, text: `I know ${contractorPhone}` }), channel);
+    const ctx = (await store.context(queued.conversationId!))!;
+    assert.equal(ctx.registeredContractors?.length, 0);
+    assert.equal(identifiedSenderRole(ctx, sender), null);
+  }
+  const own = await store.ingest(incoming({ sender: contractorPhone, owner: line, isGroup: false }), 'linq');
+  assert.equal((await store.context(own.conversationId!))?.registeredContractors?.[0]?.firstName, 'Sam', 'Legacy chat without a roster can use its actual sender');
+});
+
+test('conflicting direct-message signups remain unresolved rather than becoming a homeowner', async () => {
+  await signup(); await signup({ firstName: 'Someone else' });
+  const queued = await store.ingest(incoming({ sender: contractorPhone, owner: line, isGroup: false }), 'linq');
+  const ctx = (await store.context(queued.conversationId!))!;
+  assert.equal(ctx.registeredContractors?.length, 0); assert.deepEqual(ctx.ambiguousContractorPhones, [contractorPhone]);
+  assert.match(participantContext(ctx), /conflicting signup records/);
+  assert.doesNotMatch(participantContext(ctx), /treat the person texting FORM as the homeowner/);
+});
