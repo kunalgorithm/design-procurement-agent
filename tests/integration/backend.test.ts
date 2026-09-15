@@ -1,3 +1,4 @@
+import { prepareFirstDesign, confirmedDesign } from './intake-fixtures.js';
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -37,12 +38,12 @@ const finalizeAgent: Agent = { async respond(ctx) {
 } };
 async function deliveredDesign() {
   const chatId = randomUUID();
-  const queued = await store.ingest(incoming({ chatId, isGroup: false, text: '123 Example St. Dark cabinets, keep the backsplash.' }), 'linq');
+  const queued = await prepareFirstDesign(store, incoming({ chatId, isGroup: false, text: '123 Example St. Dark cabinets, keep the backsplash.' }), 'linq');
   const id = randomUUID();
   const render: Attachment = { id, url: `/api/media/${id}`, mimeType: 'image/jpeg', filename: 'kitchen-design.jpg', sizeBytes: 4 };
-  await worker({ async respond() { return decision({ reply: null,
+  await worker({ async respond(ctx) { return confirmedDesign(ctx, decision({ reply: null,
     brief: { ...decision().brief, propertyAddress: '123 Example St', materials: ['Dark cabinets', 'Existing backsplash'] },
-    handoff: { kind: 'design', summary: 'First design' } }); } }, messenger, { async generate() { return [render]; } }).tick();
+    handoff: { kind: 'design', summary: 'First design' } })); } }, messenger, { async generate() { return [render]; } }).tick();
   return { chatId, conversationId: queued.conversationId!, render };
 }
 
@@ -52,7 +53,7 @@ after(async () => { await pool.end(); await admin.query(`DROP SCHEMA ${schema} C
 
 test('migrations are repeatable', async () => {
   await migrate(pool);
-  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '6');
+  assert.equal((await pool.query('SELECT count(*) FROM schema_migrations')).rows[0].count, '7');
 });
 
 test('finalization saves the exact image, customer evidence and choices once across a delivery retry', async () => {
@@ -212,7 +213,8 @@ test('two workers serialize the same chat while allowing new inbound messages to
   assert.equal(await worker().tick(), false);
   release(); await active;
   await worker().tick();
-  assert.equal(sent.length, 2);
+  assert.equal(sent.length, 1, 'Defer stale intake replies until the latest input is included');
+  assert.equal((await store.getTurn(first.turnId!))?.status, 'cancelled');
   assert.equal((await store.getTurn(second.turnId!))?.status, 'done');
 });
 
@@ -309,10 +311,10 @@ test('human escalation creates an actionable task and pauses automation', async 
 });
 
 test('design handoffs persist the approved brief and can be completed through the API', async () => {
-  await store.ingest(incoming(), 'linq');
+  await prepareFirstDesign(store, incoming(), 'linq');
   const output = decision({ handoff: { kind: 'design', summary: 'Approved cabinet replacement brief.' } });
   Object.assign(output.brief, { propertyAddress: '123 Example Street' });
-  await worker({ async respond() { return output; } }).tick();
+  await worker({ async respond(ctx) { return confirmedDesign(ctx, output); } }).tick();
   const listed = await request(app).get('/api/handoffs').set(auth).expect(200);
   assert.equal(listed.body.handoffs[0].kind, 'design');
   await request(app).patch(`/api/handoffs/${listed.body.handoffs[0].id}`).set(auth).send({ status: 'completed' }).expect(200);
@@ -321,14 +323,14 @@ test('design handoffs persist the approved brief and can be completed through th
 test('a generated kitchen image is stored on the assistant message', async () => {
   const photoId = randomUUID();
   await writeSandboxMedia(photoId, Buffer.from([0xff, 0xd8, 0xff, 0xd9]), { mimeType: 'image/jpeg', filename: 'kitchen.jpg' });
-  const queued = await store.ingest(incoming({
+  const queued = await prepareFirstDesign(store, incoming({
     text: 'Please redesign 123 Example Street.',
     attachments: [{ id: photoId, url: `/api/media/${photoId}`, mimeType: 'image/jpeg', filename: 'kitchen.jpg', sizeBytes: 4 }],
   }), 'sandbox');
   const render: Attachment = { id: randomUUID(), url: `/api/media/${randomUUID()}`, mimeType: 'image/jpeg', filename: 'kitchen-redesign.jpg', sizeBytes: 12 };
   const output = decision({ reply: 'Here is a redesign.', handoff: { kind: 'design', summary: 'First kitchen.' } });
   Object.assign(output.brief, { propertyAddress: '123 Example Street' });
-  await worker({ async respond() { return output; } }, messenger, { async generate() { return [render]; } }).tick();
+  await worker({ async respond(ctx) { return confirmedDesign(ctx, output); } }, messenger, { async generate() { return [render]; } }).tick();
   const history = await store.context(queued.conversationId!);
   const assistant = history?.messages.findLast((message) => message.role === 'assistant');
   assert.deepEqual(assistant?.attachments, [render]);
@@ -492,12 +494,12 @@ test('operator messages are idempotent and never invoke the model', async () => 
 });
 
 test('progress precedes rendering and failed delivery reuses the saved image and message key', async () => {
-  const queued = await store.ingest(incoming(), 'linq');
+  const queued = await prepareFirstDesign(store, incoming(), 'linq');
   const render: Attachment = { id: randomUUID(), url: '/unused-test-reference', mimeType: 'image/jpeg', filename: 'design.jpg', sizeBytes: 4 };
   const output = decision({ reply: 'Here is the revised kitchen.', handoff: { kind: 'design', summary: 'Lighter cabinets' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } });
   let models = 0; let renders = 0;
   const deliveries: { key: string; text: string; attachments: Attachment[] }[] = [];
-  const model: Agent = { async respond() { models++; return output; } };
+  const model: Agent = { async respond(ctx) { models++; return confirmedDesign(ctx, output); } };
   const transport: Messenger = { async send(_chat, text, key, attachments = []) {
     deliveries.push({ key, text, attachments });
     if (attachments.length && deliveries.filter((entry) => entry.attachments.length).length === 1) throw new Error('Lost acknowledgement');
@@ -525,11 +527,11 @@ test('progress precedes rendering and failed delivery reuses the saved image and
 });
 
 test('image-model access failure preserves the request and reports unavailability without a retry loop or human offer', async () => {
-  const queued = await store.ingest(incoming(), 'linq');
+  const queued = await prepareFirstDesign(store, incoming(), 'linq');
   const output = decision({ reply: 'Here is your kitchen.', handoff: { kind: 'design', summary: 'Render kitchen' },
     brief: { ...decision().brief, propertyAddress: '123 Example St' } });
   let renders = 0;
-  const runner = worker({ async respond() { return output; } }, messenger, { async generate() {
+  const runner = worker({ async respond(ctx) { return confirmedDesign(ctx, output); } }, messenger, { async generate() {
     renders++;
     throw Object.assign(new Error('Project does not have access to image model'), { status: 403, code: 'model_not_found' });
   } });
@@ -547,14 +549,14 @@ test('image-model access failure preserves the request and reports unavailabilit
 });
 
 test('one running worker serves a second chat while the first chat is rendering', async () => {
-  const first = incoming(); await store.ingest(first, 'sandbox');
+  const first = incoming(); await prepareFirstDesign(store, first, 'sandbox');
   let release!: () => void; let entered!: () => void; let answered!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   const started = new Promise<void>((resolve) => { entered = resolve; });
   const secondAnswered = new Promise<void>((resolve) => { answered = resolve; });
   const model: Agent = { async respond(ctx) {
     if (ctx.conversation.external_id !== first.chatId) { answered(); return decision(); }
-    return decision({ handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } });
+    return confirmedDesign(ctx, decision({ handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } }));
   } };
   const design: DesignStudio = { async generate() { entered(); await gate; return []; } };
   const runner = new Worker(store, model, messenger, logger, 20, 'sandbox', design, 2);
@@ -569,9 +571,9 @@ test('one running worker serves a second chat while the first chat is rendering'
 });
 
 test('STOP during a progress update prevents image generation and the final reply', async () => {
-  const message = incoming(); const queued = await store.ingest(message, 'linq');
+  const message = incoming(); const queued = await prepareFirstDesign(store, message, 'linq');
   let renders = 0;
-  await worker({ async respond() { return decision({ handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } }); } }, {
+  await worker({ async respond(ctx) { return confirmedDesign(ctx, decision({ handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } })); } }, {
     async send() { await store.ingest(incoming({ chatId: message.chatId, text: 'STOP' }), 'linq'); return 'progress-accepted'; },
   }, { async generate() { renders++; return []; } }).tick();
   assert.equal(renders, 0);
@@ -598,8 +600,8 @@ test('failure updates retry with a stable key and stop after a newer request suc
 });
 
 test('missing reference images produce a recovery reply without a completed design', async () => {
-  const queued = await store.ingest(incoming(), 'sandbox');
-  await worker({ async respond() { return decision({ reply: 'Here is your design', handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } }); } }, messenger,
+  const queued = await prepareFirstDesign(store, incoming(), 'sandbox');
+  await worker({ async respond(ctx) { return confirmedDesign(ctx, decision({ reply: 'Here is your design', handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } })); } }, messenger,
     { async generate() { throw new Error('REFERENCE_IMAGES_UNAVAILABLE'); } }).tick();
   const ctx = await store.context(queued.conversationId!);
   assert.match(ctx?.messages.at(-1)?.text ?? '', /send a JPEG or PNG/);
@@ -608,11 +610,11 @@ test('missing reference images produce a recovery reply without a completed desi
 });
 
 test('a plain try-again message resends the saved design without another model or image call', async () => {
-  const message = incoming(); const queued = await store.ingest(message, 'linq');
+  const message = incoming(); const queued = await prepareFirstDesign(store, message, 'linq');
   const render: Attachment = { id: randomUUID(), url: '/unused-test-reference', mimeType: 'image/jpeg', filename: 'design.jpg', sizeBytes: 4 };
   let models = 0; let renders = 0; let failDelivery = true;
   const deliveries: { key: string; attachments: Attachment[] }[] = [];
-  const model: Agent = { async respond() { models++; return decision({ reply: 'Here is your design.', handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } }); } };
+  const model: Agent = { async respond(ctx) { models++; return confirmedDesign(ctx, decision({ reply: 'Here is your design.', handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } })); } };
   const transport: Messenger = { async send(_chat, _text, key, attachments = []) {
     deliveries.push({ key, attachments });
     if (attachments.length && failDelivery) throw Object.assign(new Error('Delivery rejected'), { status: 400 });
@@ -657,11 +659,11 @@ test('a retry after another failure gets a fresh failure notice and cannot reviv
 });
 
 test('generated image bytes and the current design remain available beyond the recent message window', async () => {
-  const queued = await store.ingest(incoming(), 'sandbox');
+  const queued = await prepareFirstDesign(store, incoming(), 'sandbox');
   const id = randomUUID(); const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
   const render: Attachment = { id, url: `/api/media/${id}`, mimeType: 'image/jpeg', filename: 'design.jpg', sizeBytes: bytes.length };
   await store.saveMedia(queued.conversationId!, render, bytes);
-  await worker({ async respond() { return decision({ handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } }); } }, messenger, { async generate() { return [render]; } }).tick();
+  await worker({ async respond(ctx) { return confirmedDesign(ctx, decision({ handoff: { kind: 'design', summary: 'Kitchen' }, brief: { ...decision().brief, propertyAddress: '123 Example St' } })); } }, messenger, { async generate() { return [render]; } }).tick();
   for (let i = 0; i < 45; i++) await pool.query("INSERT INTO messages(conversation_id,role,sender,text) VALUES($1,'user','homeowner','More notes')", [queued.conversationId]);
   const ctx = await store.context(queued.conversationId!);
   assert.equal(ctx?.messages.length, 40);

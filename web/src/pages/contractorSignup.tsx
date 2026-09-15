@@ -36,7 +36,7 @@ export default function ContractorSignupPage() {
   const agent = session?.agent;
   const form = useForm<ContractorSignupData>({
     resolver: valibotResolver(contractorSignupSchema),
-    defaultValues: { firstName: '', lastName: '', phone: '', email: '', website: '', licenseNumber: '' },
+    defaultValues: { firstName: '', lastName: '', businessName: '', phone: '', email: '', website: '', licenseNumber: '' },
     mode: 'onTouched',
   });
 
@@ -149,6 +149,7 @@ export default function ContractorSignupPage() {
                   </div>
                   {input('email', 'Email address', 'you@company.com', 'email', 'email')}
                   <div className="signup-business-divider"><span>A LITTLE ABOUT YOUR BUSINESS</span></div>
+                  {input('businessName', 'Company / practice name', 'Your business name', 'organization', 'text', true)}
                   {input('website', 'Company website', 'yourcompany.com', 'url', 'text', true)}
                   {input('licenseNumber', 'Contractor license number', 'Your license number', 'off', 'text', true)}
                 </fieldset>
@@ -164,7 +165,7 @@ export default function ContractorSignupPage() {
             {step === 1 && session && agent && <>
               <div className="signup-intro"><span className="signup-eyebrow signup-success"><Check size={14} /> YOU’RE IN, {session.firstName.toLocaleUpperCase()}</span>
                 <h1 ref={heading} tabIndex={-1}>Say hello to your<br />design agent.</h1>
-                <p>Ideas, photos, plans—send them straight to FORM. Your next project starts right in Messages.</p>
+                <p>Start a group with your homeowner and FORM, then send a quick introduction. We’ll recognize your signup number and help gather the project details.</p>
               </div>
               <div className="signup-agent-preview">
                 <div className="signup-agent-heading"><div className="signup-agent-avatar">F<span><Plus size={10} /></span></div>

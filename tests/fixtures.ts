@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto';
-import { emptyBrief, type AgentContext, type Decision, type IncomingMessage } from '../src/domain.js';
+import { emptyBrief, type Brief, type AgentContext, type Decision, type IncomingMessage } from '../src/domain.js';
 
 export const webhookSecret = `whsec_${Buffer.from('test-signing-secret-not-a-real-key').toString('base64')}`;
 export function event() {
@@ -24,9 +24,12 @@ export function incoming(overrides: Partial<IncomingMessage> = {}): IncomingMess
     sentAt: new Date().toISOString(), ...overrides };
 }
 export function decision(overrides: Partial<Decision> = {}): Decision {
-  return { reply: 'Please share a few pictures of the existing kitchen.', reaction: null, approval: null, brief: emptyBrief(), handoff: null, ...overrides };
+  return { reply: 'Please share a few pictures of the existing kitchen.', reaction: null, approval: null, intakeConfirmation: null, brief: emptyBrief(), handoff: null, ...overrides };
 }
 export function context(): AgentContext {
   return { conversation: { id: randomUUID(), external_id: randomUUID(), channel: 'linq', is_group: true,
     owner_handle: '+12025550100', paused: false, brief: emptyBrief(), created_at: new Date(), updated_at: new Date() }, messages: [], handoffs: [] };
 }
+
+export const readyBrief = (): Brief => ({ ...decision().brief, propertyAddress: '123 Example Street', goals: ['More storage'],
+  intake: { currentKitchen: 'provided', floorPlan: 'unavailable', preferences: 'provided' } });

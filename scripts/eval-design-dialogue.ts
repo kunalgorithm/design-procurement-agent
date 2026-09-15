@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import OpenAI from 'openai';
 import { OpenAIAgent } from '../src/agent.js';
+import { intakeQuestion } from '../src/intake.js';
 import { designReview, emptyBrief, validateDecision, type AgentContext, type Attachment, type Decision, type Message } from '../src/domain.js';
 
 if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required for this opt-in evaluation');
@@ -23,7 +24,13 @@ function setup(count: number, text: string, question = 'What do you think? Let m
   append(ctx, 'user', 'This is my current kitchen at 123 Example Street. Keep my light backsplash and layout.', undefined, [sample]);
   append(ctx, 'assistant', 'Thanks for sharing your kitchen.');
   for (let i = 0; i < count; i++) append(ctx, 'assistant', `Here is your kitchen design. ${question}`, undefined, [{ ...sample, id: `design-${i}` }]);
-  append(ctx, 'user', text);
+  if (count === 0) {
+    ctx.conversation.brief.intake = { currentKitchen: 'provided', floorPlan: 'unavailable', preferences: 'provided' };
+    append(ctx, 'user', text + ' I don’t have a floor plan.');
+    append(ctx, 'assistant', intakeQuestion);
+    ctx.intakeCheckpoint = ctx.messages.at(-1)!;
+    append(ctx, 'user', 'Nothing else, go ahead.');
+  } else append(ctx, 'user', text);
   return ctx;
 }
 const finalizeQuestion = 'Would you like to finalize this design so your contractor can order materials and plan the work?';

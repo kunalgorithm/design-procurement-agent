@@ -106,6 +106,7 @@ test('blocked or duplicate handoffs cannot retain a claim that a new design was 
   const output = decision({ reply: 'Here is the kitchen I just created.', handoff: { kind: 'design', summary: 'New kitchen' } });
   assert.equal(validateDecision(output, ctx).reply, 'What is the property address for this kitchen?');
   output.brief.propertyAddress = '123 Example St';
+  ctx.designCount = 1;
   ctx.handoffs.push({ id: randomUUID(), kind: 'design', summary: 'Design pending', status: 'open' });
   assert.match(validateDecision(output, ctx).reply!, /already with the team/);
 });
