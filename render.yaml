@@ -20,7 +20,7 @@ services:
           name: design-procurement-agent-db
           property: connectionString
       - key: LINQ_FROM_NUMBER
-        value: "+16504447573"
+        value: "+12054909563"
       - key: LINQ_ADMIN_NUMBERS
         sync: false
       - key: ADMIN_API_KEY
