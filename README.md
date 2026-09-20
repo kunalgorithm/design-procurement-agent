@@ -12,7 +12,7 @@ The editable conversation prompt lives in [`prompts/designer.md`](prompts/design
 - PostgreSQL conversation history, project briefs, handoffs, and durable queued replies.
 - Debouncing, duplicate-event protection, per-chat serialization, retries, and stable Linq send idempotency keys.
 - Human takeover, pause/resume, explicit STOP handling, operator messages, and failed-turn inspection.
-- Phone-restricted `/reset` (`/new`), `/pause`, `/resume`, and `/status` commands in live chats, plus private `/contractor` and `/client` role sessions.
+- Phone-restricted `/help`, `/reset` (`/new`), `/pause`, `/resume`, and `/status` commands in live chats, plus private `/contractor` and `/client` role sessions.
 - A public contractor landing page and signup flow, with a Messages handoff and downloadable FORM contact card.
 - A sandbox web UI and `npm run chat` that exercise the same backend without sending real texts.
 - Render Blueprint, PostgreSQL, health checks, graceful shutdown, and deployment after GitHub checks pass.
@@ -133,6 +133,7 @@ Send a command as the entire message, without attachments. Commands apply to the
 
 | Command | Effect |
 | --- | --- |
+| `/help` | List all admin commands, their effects, and private-chat restrictions without changing the current project or pause state. |
 | `/reset` or `/new` | Archive the current session and start fresh in the same Messages thread. Clear the agent's active brief, image references, and handoffs; cancel unfinished work from the previous session. Clear any selected role and return to normal signup recognition. |
 | `/contractor` | Private chats only: start a fresh project with you as the contractor. FORM skips its introduction and helps with your client project. |
 | `/client` | Private chats only: start a fresh project with you as the client, even if your number has a contractor signup. FORM introduces itself and begins client intake. |

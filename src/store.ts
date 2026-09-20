@@ -3,7 +3,7 @@ import type { MediaFile } from './media.js';
 import type { z } from 'zod';
 import type { contractorSignupSchema } from './contractor-schema.js';
 import { transaction } from './db.js';
-import { normalizePhoneNumber, parseChatCommand, type ChatCommand } from './chat-commands.js';
+import { adminHelpText, normalizePhoneNumber, parseChatCommand, type ChatCommand } from './chat-commands.js';
 import { contractorMatches, type RegisteredContractor } from './group-contractors.js';
 import { emptyBrief, isStopRequest, selfIdentifiedRole, privateRoleOverride, identifiedSenderRole, type IncomingMessage, type Conversation, type Message, type Handoff, type Decision, type AgentContext, type Attachment, type ChatParticipants } from './domain.js';
 
@@ -101,6 +101,8 @@ export class Store {
       reply = 'That command is available only to FORM admins.';
     } else if (message.attachments.length) {
       reply = 'Send the command on its own, without attachments.';
+    } else if (command === 'help') {
+      reply = adminHelpText;
     } else if (changingRole && current.is_group) {
       reply = 'Send /contractor or /client in a private chat with FORM. Roles in this group stay unchanged.';
     } else if (changingRole && !normalizePhoneNumber(message.sender)) {

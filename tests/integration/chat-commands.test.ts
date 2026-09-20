@@ -155,7 +155,50 @@ test('both configured admins can pause and resume group and direct chats without
   }
 });
 
-test('unlisted senders cannot reset, pause, resume, or inspect status, even if the owned line is an admin', async () => {
+test('help lists all controls for both admins in active and paused chats without changing project state', async () => {
+  for (const sender of [kunal, danny]) for (const group of [false, true]) for (const paused of [false, true]) {
+    const chat = randomUUID();
+    if (!group) {
+      await command('/contractor', sender, chat, false);
+      await worker().tick();
+    }
+    const original = await store.ingest(incoming({ chatId: chat, sender, isGroup: group, text: 'Keep the oak cabinets' }), 'linq');
+    await worker({ async respond() { return decision({ brief: { ...decision().brief, style: 'Oak' } }); } }).tick();
+    await store.pause(original.conversationId!, paused);
+    const before = (await store.context(original.conversationId!))!;
+    const turnsBefore = await store.listConversationTurns(original.conversationId!);
+    const payload = commandEvent(' /HeLP \n', sender, chat, group);
+    const result = await deliver(payload);
+    assert.equal(result.authorized, true);
+    assert.equal(result.conversationId, original.conversationId);
+    assert.equal((await deliver(payload)).turnId, result.turnId);
+    const sentBefore = sent.length;
+    await worker().tick();
+    assert.equal(sent.length, sentBefore + 1);
+    assert.equal(sent.at(-1)!.chat, chat);
+    const help = sent.at(-1)!.text;
+    for (const name of ['help', 'status', 'pause', 'resume', 'reset', 'new', 'contractor', 'client']) {
+      assert.match(help, new RegExp(`/${name}\\b`));
+    }
+    assert.match(help, /\/contractor[^\n]*private chats only/);
+    assert.match(help, /\/client[^\n]*private chats only/);
+    assert.match(help, /archive the current project and cancel unfinished work/);
+    assert.match(help, /Cancelled work is not replayed/);
+    assert.match(help, /without attachments/);
+    const after = (await store.context(original.conversationId!))!;
+    assert.equal(after.conversation.paused, paused);
+    assert.equal(after.conversation.archived_at, null);
+    assert.equal(after.conversation.role_override, before.conversation.role_override);
+    assert.equal(after.conversation.role_override_sender, before.conversation.role_override_sender);
+    assert.deepEqual(after.conversation.brief, before.conversation.brief);
+    assert.deepEqual(after.messages, before.messages);
+    assert.deepEqual(after.handoffs, before.handoffs);
+    assert.deepEqual((await store.listConversationTurns(original.conversationId!)).filter((turn) => turn.id !== result.turnId), turnsBefore);
+    assert.equal(await worker().tick(), false);
+  }
+});
+
+test('unlisted senders cannot use any admin command, even if the owned line is an admin', async () => {
   const chat = randomUUID();
   const original = await store.ingest(incoming({ chatId: chat }), 'linq');
   await worker({ async respond() { return decision(); } }).tick();
@@ -163,7 +206,7 @@ test('unlisted senders cannot reset, pause, resume, or inspect status, even if t
   await worker().tick();
   assert.equal((await store.getConversation(original.conversationId!))?.paused, false);
   await store.pause(original.conversationId!, true);
-  for (const text of ['/reset','/new','/pause','/resume','/status','/contractor','/client']) {
+  for (const text of ['/help','/reset','/new','/pause','/resume','/status','/contractor','/client']) {
     const payload = commandEvent(text, '+12025550199', chat);
     payload.data.chat.owner_handle.handle = kunal;
     const result = await deliver(payload);
@@ -235,7 +278,7 @@ test('reset and role commands archive the full old session and route later messa
   }
 });
 
-for (const resetCommand of ['/new', '/client', '/contractor']) test(`/status works during rendering and ${resetCommand} suppresses the old result`, async () => {
+for (const resetCommand of ['/new', '/client', '/contractor']) test(`/status and /help work during rendering and ${resetCommand} suppresses the old result`, async () => {
   const chat = randomUUID(); const original = await prepareFirstDesign(store, incoming({ chatId: chat, isGroup: false }), 'linq');
   let release!: () => void; let entered!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -248,6 +291,10 @@ for (const resetCommand of ['/new', '/client', '/contractor']) test(`/status wor
     await command('/status',kunal,chat,false);
     await worker().tick();
     assert.match(sent.at(-1)!.text, /1 working/);
+    await command('/help',kunal,chat,false);
+    await worker().tick();
+    assert.match(sent.at(-1)!.text, /FORM admin controls/);
+    assert.equal((await store.getTurn(original.turnId!))?.status, 'processing');
     const reset = await command(resetCommand,danny,chat,false);
     await worker().tick();
     assert.match(sent.at(-1)!.text, /fresh (conversation|project)/);
@@ -293,8 +340,8 @@ test('a status command does not prevent retrying the latest failed design reques
   assert.equal(retry.turnId, original.turnId);
 });
 
-test('attachments on a command do not accidentally discard project context', async () => {
-  const payload = commandEvent('/reset');
+for (const name of ['/reset', '/help']) test(`attachments on ${name} do not accidentally discard project context`, async () => {
+  const payload = commandEvent(name);
   payload.data.parts.push({ type: 'media', id: 'photo', url: 'https://cdn.linqapp.com/photo.jpg', mime_type: 'image/jpeg' });
   const queued = await deliver(payload);
   await worker().tick();
