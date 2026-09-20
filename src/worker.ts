@@ -1,8 +1,11 @@
 import type { Logger } from 'pino';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { Agent, Attachment, Decision, Messenger } from './domain.js';
 import { designReview, reactionTarget, validateDecision } from './domain.js';
 import { shouldGenerateKitchen, type DesignStudio } from './design.js';
 import { Store, type Turn } from './store.js';
+import { splitTextMessages } from './text-messages.js';
+import { TypingSession } from './typing.js';
 
 export function classifyError(error: unknown, stage?: string) {
   const status = error && typeof error === 'object' && 'status' in error ? Number(error.status) : undefined;
@@ -28,7 +31,8 @@ export class Worker {
   constructor(private readonly store: Store, private readonly agent: Agent,
     private readonly messenger: Messenger, private readonly logger: Logger,
     private readonly pollMs: number, private readonly mode: 'sandbox' | 'live',
-    private readonly design?: DesignStudio, private readonly concurrency = 3) {}
+    private readonly design?: DesignStudio, private readonly concurrency = 3,
+    private readonly pauseBetweenTexts: (ms: number) => Promise<void> = (ms) => delay(ms)) {}
 
   private async cancelled(turn: Turn) {
     const conversation = await this.store.getConversation(turn.conversation_id);
@@ -55,6 +59,7 @@ export class Worker {
     if (!claim) return false;
     const { turn } = claim;
     let stage = 'agent';
+    let typing: TypingSession | undefined;
     try {
       if (turn.status === 'failed') {
         if (await this.store.hasNewerCompletedTurn(turn)) { await this.store.finishFailureNotice(turn); return true; }
@@ -83,6 +88,12 @@ export class Worker {
       const context = await this.store.context(turn.conversation_id, turn.through_seq);
       if (!context) throw new Error('CONVERSATION_MISSING');
       if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }
+      if (turn.kind === 'agent' && context.conversation.channel === 'linq' && this.mode === 'live' && this.messenger.typing) {
+        typing = new TypingSession((active) => this.messenger.typing!(context.conversation.external_id, active),
+          async () => !await this.cancelled(turn),
+          (error) => this.logger.warn({ turnId: turn.id, code: classifyError(error).code }, 'Typing indicator failed; continuing'));
+        await typing.start();
+      }
       const initialIntake = turn.kind === 'agent' && designReview(context).count === 0;
       // Old persisted first-design decisions must also pass the new intake gate.
       const legacyDesign = initialIntake && turn.decision?.handoff?.kind === 'design' && !turn.decision.intakeConfirmation;
@@ -112,6 +123,7 @@ export class Worker {
           if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }
           if (initialIntake && await this.store.deferForNewInput(turn)) return true;
           stage = 'image_generation';
+          await typing?.refresh();
           try { attachments = await this.design.generate(context, output); }
           catch (error) {
             if (!(error instanceof Error) || error.message !== 'REFERENCE_IMAGES_UNAVAILABLE') throw error;
@@ -136,7 +148,28 @@ export class Worker {
       if (output.handoff?.kind === 'finalization' && await this.store.deferFinalization(turn)) return true;
       if ((output.reply || attachments.length) && context.conversation.channel === 'linq') {
         if (this.mode !== 'live') throw Object.assign(new Error('LIVE_SEND_DISABLED'), { status: 403 });
-        externalId = await this.messenger.send(context.conversation.external_id, output.reply ?? '', turn.id, attachments);
+        if (turn.kind !== 'agent') {
+          externalId = await this.messenger.send(context.conversation.external_id, output.reply ?? '', turn.id, attachments);
+        } else {
+          // Older/recovered decisions without a saved plan keep their original payload/key.
+          // Once planned, retries always reuse the saved boundaries and only send unfinished parts.
+          const texts = turn.decision ? [output.reply ?? ''] : splitTextMessages(output.reply ?? '');
+          const parts = await this.store.prepareReplyParts(turn, texts, attachments);
+          for (const part of parts) {
+            if (part.sent_at) { externalId ??= part.external_id; continue; }
+            if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }
+            if (part.position > 0) {
+              if (await this.store.deferForNewInput(turn)) return true;
+              await typing?.refresh();
+              await this.pauseBetweenTexts(1000);
+              if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }
+              if (await this.store.deferForNewInput(turn)) return true;
+            }
+            const receipt = await this.messenger.send(context.conversation.external_id, part.text, part.id, part.attachments);
+            await this.store.recordReplyPart(turn, part, receipt);
+            externalId ??= receipt;
+          }
+        }
       }
       await this.store.finish(turn, output, externalId, attachments);
       this.logger.info({ turnId: turn.id, conversationId: turn.conversation_id, handoff: output.handoff?.kind, images: attachments.length }, 'Turn completed');
@@ -144,7 +177,10 @@ export class Worker {
       const failure = classifyError(error, stage);
       await this.store.fail(turn, failure.code, failure.permanent);
       this.logger.error({ turnId: turn.id, attempt: turn.attempts, stage, ...failure }, 'Turn failed');
-    } finally { await this.store.release(claim); }
+    } finally {
+      await typing?.stop();
+      await this.store.release(claim);
+    }
     return true;
   }
 

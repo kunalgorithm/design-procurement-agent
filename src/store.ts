@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { randomUUID } from 'node:crypto';
 import type { MediaFile } from './media.js';
 import type { z } from 'zod';
 import type { contractorSignupSchema } from './contractor-schema.js';
@@ -14,6 +15,10 @@ export interface Turn {
   operator_text: string | null; attempts: number; last_error: string | null;
 }
 export interface ClaimedTurn { turn: Turn; client: pg.PoolClient; lockKey: string }
+export interface ReplyPart {
+  id: string; turn_id: string; position: number; text: string; attachments: Attachment[];
+  external_id: string | null; sent_at: Date | null;
+}
 
 export class Store {
   constructor(readonly pool: pg.Pool, private readonly debounceMs = 1500) {}
@@ -298,6 +303,31 @@ export class Store {
   }
   async saveGeneratedAttachments(id: string, attachments: Attachment[]) {
     await this.pool.query("UPDATE turns SET generated_attachments=$2 WHERE id=$1 AND status='processing'", [id, JSON.stringify(attachments)]);
+  }
+  async prepareReplyParts(turn: Turn, texts: string[], attachments: Attachment[]) {
+    return transaction(this.pool, async (client) => {
+      await client.query('SELECT id FROM turns WHERE id=$1 FOR UPDATE', [turn.id]);
+      const existing = await client.query<ReplyPart>('SELECT * FROM reply_parts WHERE turn_id=$1 ORDER BY position', [turn.id]);
+      if (existing.rowCount) return existing.rows;
+      for (const [position, text] of texts.entries()) {
+        // Preserve the historical key for a one-text reply; later parts have durable independent keys.
+        await client.query(`INSERT INTO reply_parts(id,turn_id,position,text,attachments) VALUES($1,$2,$3,$4,$5)`,
+          [position === 0 ? turn.id : randomUUID(), turn.id, position, text, JSON.stringify(position === 0 ? attachments : [])]);
+      }
+      return (await client.query<ReplyPart>('SELECT * FROM reply_parts WHERE turn_id=$1 ORDER BY position', [turn.id])).rows;
+    });
+  }
+  async recordReplyPart(turn: Turn, part: ReplyPart, externalId: string) {
+    await transaction(this.pool, async (client) => {
+      await client.query('UPDATE reply_parts SET external_id=$2,sent_at=COALESCE(sent_at,now()) WHERE id=$1', [part.id,externalId]);
+      const sent = (await client.query<ReplyPart>('SELECT * FROM reply_parts WHERE turn_id=$1 AND sent_at IS NOT NULL ORDER BY position', [turn.id])).rows;
+      // Keep one logical reply in model context, but record only the bubbles actually accepted by Linq.
+      // Each individual provider receipt stays in reply_parts for restart-safe delivery.
+      await client.query(`INSERT INTO messages(id,conversation_id,external_id,role,sender,text,attachments)
+        VALUES($1,$2,$3,'assistant','FORM',$4,$5) ON CONFLICT(id) DO UPDATE SET text=EXCLUDED.text,attachments=EXCLUDED.attachments`,
+        [turn.id,turn.conversation_id,`outbound:${sent[0]!.external_id}`,sent.map((item) => item.text).filter(Boolean).join('\n\n'),
+          JSON.stringify(sent.flatMap((item) => item.attachments))]);
+    });
   }
   async prepareUpdate(turn: Turn, phase: 'progress' | 'failure', text: string) {
     return (await this.pool.query<{ id: string; text: string; sent_at: Date | null }>(`INSERT INTO turn_updates(turn_id,phase,text)

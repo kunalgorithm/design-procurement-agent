@@ -122,6 +122,7 @@ export interface AgentContext { conversation: Conversation; messages: Message[];
 export interface Agent { respond(context: AgentContext): Promise<Decision> }
 export interface Messenger {
   send(chatId: string, text: string, idempotencyKey: string, attachments?: Attachment[]): Promise<string>;
+  typing?(chatId: string, active: boolean): Promise<void>;
   react?(messageId: string, emoji: Reaction): Promise<void>;
   chatParticipants?(chatId: string, owner?: string | null): Promise<ChatParticipants>;
 }

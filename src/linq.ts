@@ -69,6 +69,11 @@ export class LinqMessenger implements Messenger {
       : emoji === '👍' ? { operation: 'add', type: 'like' }
         : { operation: 'add', type: 'custom', custom_emoji: emoji });
   }
+  async typing(chatId: string, active: boolean): Promise<void> {
+    const options = { timeout: 2000, maxRetries: 0 as const };
+    if (active) await this.client.chats.typing.start(chatId, options);
+    else await this.client.chats.typing.stop(chatId, options);
+  }
   async send(chatId: string, text: string, idempotencyKey: string, attachments: Attachment[] = []): Promise<string> {
     const parts: Array<{ type: 'text'; value: string } | { type: 'media'; attachment_id: string }> = [];
     if (text) parts.push({ type: 'text', value: text });
