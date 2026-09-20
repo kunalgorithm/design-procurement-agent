@@ -91,7 +91,8 @@ export class OpenAIAgent implements Agent {
       }
       const content: ResponseInputContent[] = [{
         type: 'input_text',
-        text: JSON.stringify({ messageId: message.id, sender: message.sender, role: identifiedSenderRole(context, message.sender), source: message.role, text: message.text, attachments: message.attachments }),
+        text: JSON.stringify({ messageId: message.id, sender: message.sender, role: identifiedSenderRole(context, message.sender), source: message.role, text: message.text,
+          attachments: message.attachments.map(({ id, mimeType, filename, sizeBytes }) => ({ id, mimeType, filename, sizeBytes })) }),
       }, ...appendMedia(message.attachments, 'User-provided image or document')];
       input.push({ role: 'user', content });
     }

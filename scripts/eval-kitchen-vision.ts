@@ -87,7 +87,8 @@ for (const scenario of cases) {
     console.log(JSON.stringify({ scenario: scenario.name, pass: true, model, elapsedMs: Date.now() - started, reply: out.reply, layout: out.brief.kitchenLayout }));
   } catch (error) {
     failures++;
-    console.log(JSON.stringify({ scenario: scenario.name, pass: false, error: error instanceof assert.AssertionError ? error.message : 'MODEL_REQUEST_FAILED',
+    console.log(JSON.stringify({ scenario: scenario.name, pass: false, elapsedMs: Date.now() - started,
+      errorType: error instanceof Error ? error.name : 'UnknownError', error: error instanceof assert.AssertionError ? error.message : 'MODEL_REQUEST_FAILED',
       ...(error instanceof OpenAI.APIError ? { status: error.status, code: error.code } : {}) }));
   }
 }

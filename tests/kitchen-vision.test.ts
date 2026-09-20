@@ -49,6 +49,19 @@ test('unavailable photos are explicitly excluded from visual evidence and do not
   }), 'gpt-5.6-terra').respond(ctx);
 });
 
+test('inline image bytes are sent only as visual input, never duplicated into text metadata', async () => {
+  const ctx = context(); const image = photo('current');
+  ctx.messages = [{ id: randomUUID(), seq: '1', conversation_id: ctx.conversation.id, role: 'user', sender: 'homeowner', text: 'Current kitchen',
+    attachments: [image], created_at: new Date() }];
+  await new OpenAIAgent(client((body) => {
+    const parts = body.input.flatMap((item: any) => Array.isArray(item.content) ? item.content : []);
+    assert.equal(parts.find((part: any) => part.type === 'input_image').image_url, image.url);
+    const text = parts.filter((part: any) => part.type === 'input_text').map((part: any) => part.text).join('\n');
+    assert.doesNotMatch(text, /base64|data:image/);
+    assert.match(text, /"id":"current"/);
+  }), 'gpt-5.6-terra').respond(ctx);
+});
+
 test('layout evidence is retained in the design request with uncertainty and existing-room restrictions', () => {
   const output = decision();
   output.brief.kitchenLayout = { wallRuns: [
