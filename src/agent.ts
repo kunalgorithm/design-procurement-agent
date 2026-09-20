@@ -52,7 +52,15 @@ export class OpenAIAgent implements Agent {
       const part = await resolveModelAttachment(latestDesign, this.media);
       if (part) selected.set(latestDesign.id, part);
     }
-    for (const { message, attachment } of newestUploads) {
+    const purpose = (id: string) => context.conversation.brief.imageReferences?.find((ref) => ref.attachmentId === id)?.purpose;
+    // Keep room geometry in view even when newer inspiration uploads arrive.
+    const prioritizedUploads = [
+      ...newestUploads.slice(0, 1),
+      ...newestUploads.filter(({ attachment }) => purpose(attachment.id) === 'floor_plan').slice(0, 1),
+      ...newestUploads.filter(({ attachment }) => purpose(attachment.id) === 'current_kitchen').slice(0, 2),
+      ...newestUploads,
+    ];
+    for (const { message, attachment } of prioritizedUploads) {
       if (selected.size >= 5) break;
       if (selected.has(attachment.id)) continue;
       const isLocal = !!sandboxMediaId(attachment.url) || attachment.url.startsWith('data:');
@@ -61,6 +69,7 @@ export class OpenAIAgent implements Agent {
       if (part) selected.set(attachment.id, part);
     }
     const mediaCount = selected.size;
+    input[1] = { role: 'developer', content: `${participantContext(context)}\nVisual inputs actually attached on this turn: ${JSON.stringify([...selected.keys()])}. Only these attachment IDs have readable content on this turn. Other attachments are metadata or saved observations, not freshly inspected images. Compare overlapping views of the same room before describing its layout; prior assistant descriptions are not visual evidence.` };
     const appendMedia = (attachments: Attachment[], label: string): ResponseInputContent[] => attachments.flatMap((attachment) => {
       const part = selected.get(attachment.id);
       if (!part) return [];
@@ -87,7 +96,8 @@ export class OpenAIAgent implements Agent {
       input.push({ role: 'user', content });
     }
     const generate = (messages: ResponseInput) => this.client.responses.parse({
-      model: this.model, input: messages, store: false, max_output_tokens: 5000,
+      model: this.model, input: messages, store: false, max_output_tokens: mediaCount ? 8000 : 5000,
+      ...(mediaCount && this.model.startsWith('gpt-5.6-') ? { reasoning: { effort: 'high' as const } } : {}),
       text: { format: zodTextFormat(modelDecisionSchema, 'kitchen_conversation_turn') },
     });
     let response;

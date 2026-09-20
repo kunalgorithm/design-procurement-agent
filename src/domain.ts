@@ -18,8 +18,22 @@ const imageReferenceSchema = z.object({
   purpose: z.enum(['current_kitchen', 'floor_plan', 'inspiration', 'unknown']),
 });
 const imageReferencesSchema = z.array(imageReferenceSchema).max(40);
+const kitchenLayoutSchema = z.object({
+  // Record distinct physical runs before classifying the room, not one run per photo.
+  wallRuns: z.array(z.object({
+    description: z.string().max(500),
+    attachmentIds: z.array(z.string().max(200)).min(1).max(10),
+  })).max(8),
+  connectedCorners: z.number().int().min(0).max(6).nullable(),
+  shape: z.enum(['L-shaped', 'U-shaped', 'single-wall', 'galley', 'G-shaped', 'other', 'unknown']),
+  confidence: z.enum(['clear', 'tentative', 'unknown']),
+  island: z.boolean().nullable(),
+  peninsula: z.boolean().nullable(),
+  limitations: z.array(z.string().max(500)).max(10),
+}).nullable();
 const detail = z.string().max(2000).nullable();
 export const briefSchema = z.object({
+  kitchenLayout: kitchenLayoutSchema.optional(),
   intake: intakeSchema.optional(),
   imageReferences: imageReferencesSchema.optional(),
   homeownerName: detail,
@@ -38,6 +52,7 @@ export const briefSchema = z.object({
 });
 export type Brief = z.infer<typeof briefSchema>;
 export const emptyBrief = (): Brief => ({
+  kitchenLayout: null,
   intake: { currentKitchen: 'pending', floorPlan: 'pending', preferences: 'pending' },
   imageReferences: [],
   homeownerName: null, contractorName: null, propertyAddress: null, scope: null,
@@ -62,8 +77,12 @@ export const decisionSchema = z.object({
   handoff: z.object({ kind: taskKindSchema, summary: z.string().min(1).max(2000) }).nullable(),
 });
 // OpenAI's strict output schema requires every field, including nullable ones.
-export const modelDecisionSchema = decisionSchema.extend({ reaction: reactionSchema.nullable(), approval: approvalSchema,
-  intakeConfirmation: intakeConfirmationSchema, brief: briefSchema.extend({ imageReferences: imageReferencesSchema, intake: intakeSchema }) });
+export const modelDecisionSchema = z.object({
+  // Ground the brief in visual observations before composing the customer-facing reply.
+  brief: briefSchema.extend({ kitchenLayout: kitchenLayoutSchema, imageReferences: imageReferencesSchema, intake: intakeSchema }),
+  ...decisionSchema.omit({ brief: true }).shape,
+  reaction: reactionSchema.nullable(), approval: approvalSchema, intakeConfirmation: intakeConfirmationSchema,
+});
 export type Decision = z.infer<typeof decisionSchema>;
 
 export const attachmentSchema = z.object({
