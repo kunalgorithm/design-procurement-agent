@@ -21,7 +21,7 @@ export interface ReplyPart {
 }
 
 export class Store {
-  constructor(readonly pool: pg.Pool, private readonly debounceMs = 1500) {}
+  constructor(readonly pool: pg.Pool, private readonly debounceMs = 500) {}
 
   async readMedia(id: string): Promise<MediaFile | null> {
     return (await this.pool.query<MediaFile>('SELECT bytes,mime_type AS "mimeType",filename FROM project_media WHERE id=$1', [id])).rows[0] ?? null;

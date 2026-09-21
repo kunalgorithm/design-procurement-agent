@@ -1,5 +1,4 @@
 import type { Logger } from 'pino';
-import { setTimeout as delay } from 'node:timers/promises';
 import type { Agent, Attachment, Decision, Messenger } from './domain.js';
 import { designReview, reactionTarget, validateDecision } from './domain.js';
 import { shouldGenerateKitchen, type DesignStudio } from './design.js';
@@ -31,8 +30,7 @@ export class Worker {
   constructor(private readonly store: Store, private readonly agent: Agent,
     private readonly messenger: Messenger, private readonly logger: Logger,
     private readonly pollMs: number, private readonly mode: 'sandbox' | 'live',
-    private readonly design?: DesignStudio, private readonly concurrency = 3,
-    private readonly pauseBetweenTexts: (ms: number) => Promise<void> = (ms) => delay(ms)) {}
+    private readonly design?: DesignStudio, private readonly concurrency = 3) {}
 
   private async cancelled(turn: Turn) {
     const conversation = await this.store.getConversation(turn.conversation_id);
@@ -60,6 +58,7 @@ export class Worker {
     const { turn } = claim;
     let stage = 'agent';
     let typing: TypingSession | undefined;
+    let reaction: Promise<void> | undefined;
     try {
       if (turn.status === 'failed') {
         if (await this.store.hasNewerCompletedTurn(turn)) { await this.store.finishFailureNotice(turn); return true; }
@@ -88,18 +87,26 @@ export class Worker {
       const context = await this.store.context(turn.conversation_id, turn.through_seq);
       if (!context) throw new Error('CONVERSATION_MISSING');
       if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }
-      if (turn.kind === 'agent' && context.conversation.channel === 'linq' && this.mode === 'live' && this.messenger.typing) {
+      const startTyping = () => {
+        if (context.conversation.channel !== 'linq' || this.mode !== 'live' || !this.messenger.typing) return;
+        if (typing) { void typing.refresh(); return; }
         typing = new TypingSession((active) => this.messenger.typing!(context.conversation.external_id, active),
           async () => !await this.cancelled(turn),
           (error) => this.logger.warn({ turnId: turn.id, code: classifyError(error).code }, 'Typing indicator failed; continuing'));
-        await typing.start();
-      }
+        // Presence runs alongside real work, never ahead of it on the critical path.
+        void typing.start();
+      };
       const initialIntake = turn.kind === 'agent' && designReview(context).count === 0;
       // Old persisted first-design decisions must also pass the new intake gate.
       const legacyDesign = initialIntake && turn.decision?.handoff?.kind === 'design' && !turn.decision.intakeConfirmation;
-      const decision: Decision = legacyDesign ? validateDecision(turn.decision!, context) : turn.decision ?? (turn.kind !== 'agent'
-        ? { reply: turn.operator_text, brief: context.conversation.brief, handoff: null }
-        : validateDecision(await this.agent.respond(context), context));
+      let decision: Decision;
+      if (legacyDesign) decision = validateDecision(turn.decision!, context);
+      else if (turn.decision) decision = turn.decision;
+      else if (turn.kind !== 'agent') decision = { reply: turn.operator_text, brief: context.conversation.brief, handoff: null };
+      else {
+        startTyping();
+        decision = validateDecision(await this.agent.respond(context), context);
+      }
       if (!turn.decision || legacyDesign) await this.store.saveDecision(turn.id, decision);
       // A STOP or operator pause can arrive while the model is running.
       if (await this.cancelled(turn)) {
@@ -109,10 +116,9 @@ export class Worker {
       const target = reactionTarget(context);
       if (turn.kind === 'agent' && decision.reaction && target && this.mode === 'live'
         && this.messenger.react && await this.store.claimReaction(turn.id)) {
-        try { await this.messenger.react(target, decision.reaction); }
-        catch (error) {
+        reaction = this.messenger.react(target, decision.reaction).catch((error) => {
           this.logger.warn({ turnId: turn.id, code: classifyError(error).code }, 'Reaction failed; continuing with reply');
-        }
+        });
       }
       let output: Decision = decision;
       let attachments: Attachment[] = shouldGenerateKitchen(output) ? turn.generated_attachments ?? [] : [];
@@ -123,7 +129,7 @@ export class Worker {
           if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }
           if (initialIntake && await this.store.deferForNewInput(turn)) return true;
           stage = 'image_generation';
-          await typing?.refresh();
+          startTyping();
           try { attachments = await this.design.generate(context, output); }
           catch (error) {
             if (!(error instanceof Error) || error.message !== 'REFERENCE_IMAGES_UNAVAILABLE') throw error;
@@ -140,7 +146,9 @@ export class Worker {
       }
       let externalId: string | null = null;
       stage = 'delivery';
-      // A reaction or image generation may take time; honor a pause received while waiting.
+      // The answer is ready. Clear presence without making delivery wait on its API.
+      void typing?.stop();
+      // Image generation may take time; honor a pause received while waiting.
       if (await this.cancelled(turn)) {
         await this.store.cancel(turn); return true;
       }
@@ -158,13 +166,7 @@ export class Worker {
           for (const part of parts) {
             if (part.sent_at) { externalId ??= part.external_id; continue; }
             if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }
-            if (part.position > 0) {
-              if (await this.store.deferForNewInput(turn)) return true;
-              await typing?.refresh();
-              await this.pauseBetweenTexts(1000);
-              if (await this.cancelled(turn)) { await this.store.cancel(turn); return true; }
-              if (await this.store.deferForNewInput(turn)) return true;
-            }
+            if (part.position > 0 && await this.store.deferForNewInput(turn)) return true;
             const receipt = await this.messenger.send(context.conversation.external_id, part.text, part.id, part.attachments);
             await this.store.recordReplyPart(turn, part, receipt);
             externalId ??= receipt;
@@ -178,7 +180,8 @@ export class Worker {
       await this.store.fail(turn, failure.code, failure.permanent);
       this.logger.error({ turnId: turn.id, attempt: turn.attempts, stage, ...failure }, 'Turn failed');
     } finally {
-      await typing?.stop();
+      // Finish bounded best-effort calls before another turn can use this chat.
+      await Promise.all([typing?.stop(), reaction]);
       await this.store.release(claim);
     }
     return true;

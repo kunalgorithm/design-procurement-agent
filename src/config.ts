@@ -26,8 +26,8 @@ const schema = z.object({
   }),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(3),
-  WORKER_POLL_MS: z.coerce.number().int().min(100).default(1000),
-  REPLY_DEBOUNCE_MS: z.coerce.number().int().min(0).max(10000).default(1500),
+  WORKER_POLL_MS: z.coerce.number().int().min(100).default(250),
+  REPLY_DEBOUNCE_MS: z.coerce.number().int().min(0).max(10000).default(500),
 }).superRefine((value, ctx) => {
   if (value.MESSAGING_MODE === 'live') {
     for (const key of ['LINQ_API_KEY', 'LINQ_WEBHOOK_SECRET'] as const) {

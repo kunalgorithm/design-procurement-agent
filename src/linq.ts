@@ -67,7 +67,7 @@ export class LinqMessenger implements Messenger {
     await this.client.messages.addReaction(messageId, emoji === '❤️'
       ? { operation: 'add', type: 'love' }
       : emoji === '👍' ? { operation: 'add', type: 'like' }
-        : { operation: 'add', type: 'custom', custom_emoji: emoji });
+        : { operation: 'add', type: 'custom', custom_emoji: emoji }, { timeout: 2000, maxRetries: 0 });
   }
   async typing(chatId: string, active: boolean): Promise<void> {
     const options = { timeout: 2000, maxRetries: 0 as const };

@@ -3,6 +3,7 @@ export class TypingSession {
   private stopped = false;
   private timer?: NodeJS.Timeout;
   private queue: Promise<void> = Promise.resolve();
+  private stopping?: Promise<void>;
   private lastRefresh = 0;
   constructor(private readonly signal: (active: boolean) => Promise<void>,
     private readonly isActive: () => Promise<boolean>, private readonly onError: (error: unknown) => void,
@@ -39,12 +40,14 @@ export class TypingSession {
     await this.refresh();
     this.schedule();
   }
-  // Sending a message clears iMessage typing; restart it before the next text/render.
+  // A progress message clears iMessage typing; refresh only if real work continues.
   refresh() { return this.enqueue(() => this.check(true)); }
-  async stop() {
+  stop() {
+    if (this.stopping) return this.stopping;
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
-    await this.queue;
-    await this.update(false);
+    // Serialize cleanup after any in-flight start so a late start cannot leave it on.
+    this.stopping = this.queue.then(() => this.update(false));
+    return this.stopping;
   }
 }
